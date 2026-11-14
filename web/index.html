@@ -6,13 +6,12 @@
   <title>Matrix</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
-  <!-- Login -->
   <main id="login-view" class="login" hidden>
     <form id="login-form" class="login-card">
       <h1 class="wordmark">Matrix</h1>
@@ -24,52 +23,43 @@
     </form>
   </main>
 
-  <!-- App -->
   <div id="app-view" hidden>
     <header class="topbar">
       <span class="wordmark small">Matrix</span>
+      <nav class="tabs" aria-label="Sections">
+        <button data-tab="today" aria-current="page">Today</button>
+        <button data-tab="ratings">Ratings</button>
+        <button data-tab="portfolio">Portfolio</button>
+        <button data-tab="compare">Compare</button>
+      </nav>
       <div class="search">
-        <input id="search" type="search" placeholder="Search a stock or mutual fund" autocomplete="off" aria-label="Search stocks and mutual funds">
+        <input id="search" type="search" placeholder="Search a stock or fund" autocomplete="off" aria-label="Search stocks and mutual funds">
         <ul id="search-results" class="search-results" hidden></ul>
       </div>
-      <span id="asof" class="asof"></span>
       <button id="logout" class="ghost">Log out</button>
     </header>
 
-    <main class="page">
+    <!-- TODAY -->
+    <main class="page" data-view="today">
       <section class="hero" aria-live="polite">
-        <p id="hero-date" class="hero-date"></p>
-        <h1 id="hero-line" class="hero-line">Loading today's market...</h1>
-        <div class="breadth" id="breadth" aria-hidden="true">
-          <span class="adv"></span><span class="unch"></span><span class="dec"></span>
-        </div>
+        <p class="hero-date"><span id="hero-date"></span> <span id="asof" class="asof"></span></p>
+        <h1 id="hero-line" class="hero-line">Reading today's market...</h1>
+        <div class="breadth" id="breadth" aria-hidden="true"><span class="adv"></span><span class="unch"></span><span class="dec"></span></div>
         <div class="breadth-legend" id="breadth-legend"></div>
       </section>
 
-      <section class="grid two">
-        <div class="panel">
-          <h2>Biggest gainers</h2>
-          <p class="note">Stocks with at least Rs 10 crore traded today</p>
-          <table id="gainers" class="movers"></table>
+      <section class="heat-wrap">
+        <div class="section-head">
+          <h2>The 120 most traded stocks today</h2>
+          <div class="heat-scale" aria-hidden="true"><span>-5%</span><i></i><span>+5%</span></div>
         </div>
-        <div class="panel">
-          <h2>Biggest losers</h2>
-          <p class="note">Stocks with at least Rs 10 crore traded today</p>
-          <table id="losers" class="movers"></table>
-        </div>
+        <div id="heatmap" class="heatmap" role="list"></div>
       </section>
 
-      <section class="grid two">
-        <div class="panel">
-          <h2>Where the money traded</h2>
-          <p class="note">Highest value traded today</p>
-          <table id="active" class="movers"></table>
-        </div>
-        <div class="panel">
-          <h2>Unusual moves</h2>
-          <p class="note">Moved more than 20% in a day. Check the news before acting.</p>
-          <ul id="flags" class="flags"></ul>
-        </div>
+      <section class="grid three">
+        <div class="panel"><h2>Biggest gainers</h2><p class="note">At least Rs 10 crore traded</p><table id="gainers" class="movers"></table></div>
+        <div class="panel"><h2>Biggest losers</h2><p class="note">At least Rs 10 crore traded</p><table id="losers" class="movers"></table></div>
+        <div class="panel"><h2>Unusual moves</h2><p class="note">Over 20% in a day. Check the news first.</p><ul id="flags" class="flags"></ul></div>
       </section>
 
       <section class="panel">
@@ -77,26 +67,105 @@
         <p class="note">Where every number comes from, and whether it is fresh</p>
         <div id="health" class="health"></div>
       </section>
-
-      <footer class="disclaimer">
-        Matrix is a personal research tool. It does not give investment advice or guarantee returns.
-        Data: NSE daily bhavcopy and AMFI NAVs. Prices are end of day, not live.
-      </footer>
     </main>
+
+    <!-- RATINGS -->
+    <main class="page" data-view="ratings" hidden>
+      <section class="hero compact">
+        <h1 class="hero-line">Matrix Score ranks <span id="universe">every liquid stock</span> on how its price has behaved.</h1>
+        <p class="lede">Momentum, trend, calm, worst fall and ease of trading, each ranked against the whole market. It describes the past year. It does not predict the next one. Profits, debt and news join the score in later versions.</p>
+      </section>
+      <section class="grid two">
+        <div class="panel"><h2>Highest rated</h2><ol id="top-rated" class="rated"></ol></div>
+        <div class="panel"><h2>Lowest rated</h2><ol id="bottom-rated" class="rated"></ol></div>
+      </section>
+    </main>
+
+    <!-- PORTFOLIO -->
+    <main class="page" data-view="portfolio" hidden>
+      <section class="worth">
+        <div>
+          <p class="muted">Your portfolio is worth</p>
+          <p id="pf-value" class="worth-value">Rs 0</p>
+          <p id="pf-line" class="worth-line"></p>
+        </div>
+        <svg id="pf-ring" class="ring" viewBox="0 0 120 120" role="img" aria-label="Allocation"></svg>
+      </section>
+      <div id="pf-warnings"></div>
+      <section class="panel">
+        <h2>Holdings</h2>
+        <div class="table-scroll"><table id="pf-holdings" class="holdings"></table></div>
+      </section>
+      <section class="grid two">
+        <form id="tx-form" class="panel form">
+          <h2>Add a transaction</h2>
+          <div class="row">
+            <label>Type <select name="kind"><option value="stock">Stock</option><option value="fund">Mutual fund</option></select></label>
+            <label>Side <select name="side"><option value="buy">Buy</option><option value="sell">Sell</option></select></label>
+          </div>
+          <label>Stock symbol or fund scheme code <input name="code" required placeholder="TCS or 122639"></label>
+          <div class="row">
+            <label>Date <input name="date" type="date" required></label>
+            <label>Quantity <input name="quantity" type="number" step="any" min="0" required></label>
+            <label>Price <input name="price" type="number" step="any" min="0" required></label>
+          </div>
+          <p id="tx-msg" class="error" role="status"></p>
+          <button type="submit">Add transaction</button>
+        </form>
+        <form id="csv-form" class="panel form">
+          <h2>Import from a file</h2>
+          <p class="note">CSV with columns: type, code, side, date, quantity, price. One bad line stops the whole import, so nothing half-loads.</p>
+          <input id="csv-file" type="file" accept=".csv,text/csv" required aria-label="CSV file">
+          <pre class="sample">type,code,side,date,quantity,price
+stock,TCS,buy,2025-04-10,5,3250
+fund,122639,buy,2025-06-02,120,81.5</pre>
+          <p id="csv-msg" class="error" role="status"></p>
+          <button type="submit">Import file</button>
+        </form>
+      </section>
+      <section class="panel">
+        <h2>Transactions</h2>
+        <div class="table-scroll"><table id="pf-tx" class="holdings"></table></div>
+      </section>
+    </main>
+
+    <!-- COMPARE -->
+    <main class="page" data-view="compare" hidden>
+      <section class="hero compact">
+        <h1 class="hero-line">Put any stocks and funds side by side.</h1>
+        <p class="lede">Add up to 4 from the search box. Every line starts at 100, so you see which grew more, not which costs more.</p>
+        <div id="cmp-chips" class="chips"></div>
+      </section>
+      <section class="panel"><div id="cmp-chart" class="chart tall"></div></section>
+      <section class="panel"><div class="table-scroll"><table id="cmp-table" class="holdings"></table></div></section>
+    </main>
+
+    <footer class="disclaimer">
+      Matrix is a personal research tool. It does not give investment advice or guarantee returns. Past performance does not predict future results.
+      Data: NSE daily bhavcopy, AMFI NAVs, and fund history from mfapi.in checked against AMFI. End of day, not live.
+    </footer>
 
     <aside id="drawer" class="drawer" aria-hidden="true">
       <div class="drawer-inner" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
-        <button id="drawer-close" class="ghost close" aria-label="Close">Close</button>
+        <div class="drawer-actions">
+          <button id="drawer-compare" class="ghost">Add to compare</button>
+          <button id="drawer-close" class="ghost">Close</button>
+        </div>
         <p id="drawer-kicker" class="muted"></p>
         <h2 id="drawer-title"></h2>
-        <div id="drawer-price" class="drawer-price"></div>
+        <div class="drawer-head">
+          <div id="drawer-price" class="drawer-price"></div>
+          <div id="drawer-score"></div>
+        </div>
         <div id="chart" class="chart"></div>
+        <div id="drawer-reasons"></div>
         <dl id="drawer-stats" class="stats"></dl>
         <div id="drawer-flags"></div>
         <p id="drawer-source" class="source"></p>
       </div>
     </aside>
     <div id="scrim" class="scrim" hidden></div>
+    <div id="toast" class="toast" role="status" hidden></div>
   </div>
 </body>
 </html>

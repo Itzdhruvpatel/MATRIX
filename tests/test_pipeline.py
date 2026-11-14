@@ -79,3 +79,15 @@ def test_load_funds_stores_schemes_and_navs():
     f = conn.execute("SELECT * FROM funds WHERE scheme_code='120465'").fetchone()
     assert f["amc"] == "Axis Mutual Fund" and f["category"] == "Equity Scheme - Large Cap Fund"
     assert conn.execute("SELECT COUNT(*) FROM fund_navs").fetchone()[0] == 2
+
+
+def test_load_fund_history_keeps_official_and_flags_mismatch():
+    conn = db.connect(":memory:")
+    pipeline.load_funds(conn, fetch=lambda: AMFI_TEXT)  # AMFI: 120465 = 65.12 on 2026-11-13
+    payload = {"data": [{"date": "13-11-2026", "nav": "70.00000"},   # disagrees with AMFI
+                        {"date": "12-11-2026", "nav": "64.90000"},
+                        {"date": "11-11-2026", "nav": "N.A."}]}
+    s = pipeline.load_fund_history(conn, "120465", fetch=lambda c: payload)
+    assert s["status"] == "ok" and s["issues"] == 1
+    navs = dict(conn.execute("SELECT date, nav FROM fund_navs WHERE scheme_code='120465'"))
+    assert navs == {"2026-11-13": 65.12, "2026-11-12": 64.9}  # official value kept

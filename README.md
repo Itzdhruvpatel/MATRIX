@@ -4,9 +4,29 @@ Personal investment research website for Indian markets. It loads NSE end-of-day
 
 This is a research tool. It does not give investment advice, place trades, or guarantee returns. The full design is in `docs/Matrix-Design.pdf`.
 
-## What works today (Phase 0)
+## What works today
 
+**Market (Today tab)**
+- Plain-language summary of the day, rising vs falling stocks, and a heatmap of the 120 most traded stocks
+- Gainers, losers, unusual moves over 20%, and a data health panel
+
+**Matrix Score (Ratings tab)**
+- 0 to 100 score for every liquid NSE stock (about 1,500), ranked on momentum, trend, calm, worst fall and ease of trading
+- Each score lists its reasons. Stocks in the exchange's surveillance segment are capped at 30
+- Price behaviour only for now. It describes the past year and does not predict returns
+
+**Portfolio**
+- Add buys and sells by hand or import a CSV (all-or-nothing, every line checked)
+- Value, gain, booked gains, and true yearly return (XIRR) per holding and overall
+- Warns when one stock is over 10% of the portfolio
+
+**Compare**
+- Up to 4 stocks or funds on one chart, all starting at 100, with returns and risk side by side
+
+**Data**
 - Daily data pipeline: NSE bhavcopy (every listed stock) and AMFI NAVs (every mutual fund scheme)
+- Stock prices adjusted for splits and bonuses using the exchange's own previous-close figures
+- Full fund NAV history from mfapi.in on first view, cross-checked against official AMFI NAVs
 - Quality checks: broken rows are blocked, moves over 20% in a day are flagged
 - Every stored number keeps its source and fetch time
 - Login with hashed passwords, signed session cookies, and lockout after 5 wrong attempts
@@ -20,14 +40,14 @@ Needs Python 3.12 or newer.
 
 ```bash
 pip install -r requirements.txt
-python -m matrix.pipeline --days 30
+python -m matrix.pipeline --days 250
 python -m matrix.auth YOUR_NAME
 python -m uvicorn matrix.api:app --port 8000
 ```
 
 Then open http://localhost:8000 and log in.
 
-`--days 30` loads the last 30 trading days of stock prices. Mutual fund NAV history builds up one day at a time from the first run.
+`--days 250` loads about one year of stock prices and computes Matrix Scores (takes a few minutes). Fund history downloads the first time you open each fund.
 
 ## Tests
 
@@ -40,6 +60,9 @@ python -m pytest
 ```
 matrix/sources/   NSE and AMFI downloaders and parsers
 matrix/validate.py  data quality rules
+matrix/analytics.py returns, risk, XIRR, split adjustment
+matrix/score.py   Matrix Score
+matrix/portfolio.py holdings and returns
 matrix/pipeline.py  fetch, validate, store
 matrix/db.py      SQLite schema
 matrix/auth.py    passwords and sessions

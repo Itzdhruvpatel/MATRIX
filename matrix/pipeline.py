@@ -4,7 +4,7 @@ import sqlite3
 from datetime import date, datetime, timedelta, timezone
 
 from matrix import db, validate
-from matrix.sources import amfi, nse
+from matrix.sources import amfi, mfapi, nse
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -94,6 +94,32 @@ def load_funds(conn: sqlite3.Connection, fetch=amfi.download) -> dict:
     return _log_run(conn, amfi.SOURCE, nav_day, "ok", len(good), issues, None, started)
 
 
+CROSS_CHECK_TOLERANCE = 0.001  # 0.1%
+
+
+def load_fund_history(conn: sqlite3.Connection, code: str, fetch=None) -> dict:
+    """Fill a scheme's NAV history. AMFI rows are kept; mismatches are logged."""
+    started = now()
+    try:
+        rows = mfapi.parse((fetch or mfapi.download)(code))
+    except Exception as e:
+        return _log_run(conn, mfapi.SOURCE, code, "error", 0, 0, repr(e), started)
+    official = dict(conn.execute(
+        "SELECT date, nav FROM fund_navs WHERE scheme_code=? AND source=?", (code, amfi.SOURCE)))
+    issues = 0
+    for r in rows:
+        o = official.get(r["date"])
+        if o and abs(r["nav"] / o - 1) > CROSS_CHECK_TOLERANCE:
+            _issue(conn, mfapi.SOURCE, code, r["date"], "flagged",
+                   f"history NAV {r['nav']} differs from AMFI {o}")
+            issues += 1
+    fetched = now()
+    conn.executemany(
+        "INSERT OR IGNORE INTO fund_navs (scheme_code, date, nav, source, fetched_at)"
+        " VALUES (?,?,?,?,?)", [(code, r["date"], r["nav"], mfapi.SOURCE, fetched) for r in rows])
+    return _log_run(conn, mfapi.SOURCE, code, "ok", len(rows), issues, None, started)
+
+
 def run(conn: sqlite3.Connection, days: int = 1) -> list[dict]:
     """Load the last `days` trading days of stocks (skipping holidays) plus today's fund NAVs."""
     results, day, loaded, tries = [], today_ist(), 0, 0
@@ -112,5 +138,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Load market data into Matrix")
     ap.add_argument("--days", type=int, default=1, help="trading days of stock data to load")
     args = ap.parse_args()
-    for r in run(db.connect(), args.days):
+    conn = db.connect()
+    for r in run(conn, args.days):
         print(r)
+    from matrix import score
+    print(f"Scored {score.compute(conn)} stocks")

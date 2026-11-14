@@ -1,5 +1,5 @@
 """Matrix web API. Run: python -m uvicorn matrix.api:app --port 8000"""
-import math
+import json
 import os
 import secrets
 import threading
@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from matrix import auth, db, pipeline
+from matrix import analytics, auth, db, pipeline, portfolio, score
 
 ROOT = Path(__file__).resolve().parent.parent
 COOKIE = "matrix_session"
@@ -34,10 +34,6 @@ def load_secret() -> str:
     with env.open("a") as f:
         f.write(f"MATRIX_SECRET={secret}\n")
     return secret
-
-
-def pct(a, b):
-    return round((a / b - 1) * 100, 2) if a and b else None
 
 
 class Login(BaseModel):
@@ -106,6 +102,7 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
             "gainers": q(f"{liquid} ORDER BY change_pct DESC LIMIT 10", (latest,)),
             "losers": q(f"{liquid} ORDER BY change_pct ASC LIMIT 10", (latest,)),
             "most_active": q(f"{base} ORDER BY value DESC LIMIT 10", (latest,)),
+            "heatmap": q(f"{liquid} ORDER BY value DESC LIMIT 120", (latest,)),
             "flags": q("SELECT key AS symbol, reason FROM data_issues WHERE date=?"
                        " AND severity='flagged' ORDER BY key LIMIT 50", (latest,)),
         }
@@ -117,34 +114,54 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                  " FROM stock_prices) AND (symbol LIKE ? OR name LIKE ?)"
                  " ORDER BY symbol != ?, value DESC LIMIT 15", (like, like, query.upper()))
 
+    def stock_payload(symbol: str) -> dict:
+        hist = q("SELECT date, open, high, low, close, prev_close, volume, value FROM stock_prices"
+                 " WHERE symbol=? ORDER BY date", (symbol,))
+        if not hist:
+            raise HTTPException(404, f"Stock {symbol} not found")
+        info = q("SELECT symbol, name, series, isin, source, fetched_at FROM stock_prices"
+                 " WHERE symbol=? ORDER BY date DESC LIMIT 1", (symbol,))[0]
+        s = analytics.adjusted_series(hist)
+        stats = analytics.summary(s)
+        last = hist[-1]
+        stats["change_1d"] = (last["close"] / last["prev_close"] - 1) if last["prev_close"] else None
+        stats["year_high"] = max(v for d, v in s if d >= s[-1][0] - timedelta(days=365))
+        stats["year_low"] = min(v for d, v in s if d >= s[-1][0] - timedelta(days=365))
+        stats["traded_value"] = last["value"]
+        sc = q("SELECT score, components, metrics, reasons, universe, date FROM stock_scores"
+               " WHERE symbol=? ORDER BY date DESC LIMIT 1", (symbol,))
+        if sc:
+            sc = sc[0]
+            for k in ("components", "metrics", "reasons"):
+                sc[k] = json.loads(sc[k])
+        return {"kind": "stock", "code": symbol, "info": info, "stats": stats,
+                "score": sc or None, "history": hist}
+
     @app.get("/api/stocks/{symbol}")
     def stock_detail(symbol: str, _: str = Depends(user)):
-        hist = q("SELECT date, open, high, low, close, volume, value FROM stock_prices"
-                 " WHERE symbol=? ORDER BY date", (symbol.upper(),))
-        if not hist:
-            raise HTTPException(404, "Stock not found")
-        info = q("SELECT symbol, name, series, isin, source, fetched_at FROM stock_prices"
-                 " WHERE symbol=? ORDER BY date DESC LIMIT 1", (symbol.upper(),))[0]
-        closes = [h["close"] for h in hist]
-        rets = [closes[i] / closes[i - 1] - 1 for i in range(1, len(closes))]
-        vol = None
-        if len(rets) >= 5:
-            m = sum(rets) / len(rets)
-            vol = round(math.sqrt(sum((r - m) ** 2 for r in rets) / (len(rets) - 1))
-                        * math.sqrt(252) * 100, 1)
-        peak = max(closes)
-        stats = {
-            "last": closes[-1], "as_of": hist[-1]["date"],
-            "change_1d": pct(closes[-1], closes[-2]) if len(closes) > 1 else None,
-            "change_1w": pct(closes[-1], closes[-6]) if len(closes) > 5 else None,
-            "change_period": pct(closes[-1], closes[0]),
-            "period_high": max(h["high"] for h in hist), "period_low": min(h["low"] for h in hist),
-            "from_peak": pct(closes[-1], peak),
-            "volatility_annual": vol, "days": len(hist),
-        }
-        flags = q("SELECT date, severity, reason FROM data_issues WHERE key=? ORDER BY date DESC",
-                  (symbol.upper(),))
-        return {"info": info, "stats": stats, "history": hist, "flags": flags}
+        d = stock_payload(symbol.upper())
+        d["flags"] = q("SELECT date, severity, reason FROM data_issues WHERE key=?"
+                       " AND source='nse_bhavcopy' ORDER BY date DESC", (symbol.upper(),))
+        return d
+
+    @app.get("/api/scores")
+    def scores(limit: int = 15, _: str = Depends(user)):
+        latest = q("SELECT MAX(date) d FROM stock_scores")[0]["d"]
+        if not latest:
+            return {"date": None, "top": [], "bottom": []}
+        base = ("SELECT s.symbol, s.score, s.reasons, p.name, p.close,"
+                " ROUND((p.close / p.prev_close - 1) * 100, 2) change_pct FROM stock_scores s"
+                " JOIN stock_prices p ON p.symbol=s.symbol AND p.date=s.date WHERE s.date=?")
+        limit = max(1, min(limit, 50))
+
+        def rows(order):
+            out = q(f"{base} ORDER BY s.score {order}, s.symbol LIMIT {limit}", (latest,))
+            for r in out:
+                r["reasons"] = json.loads(r["reasons"])
+            return out
+
+        n = q("SELECT COUNT(*) n FROM stock_scores WHERE date=?", (latest,))[0]["n"]
+        return {"date": latest, "universe": n, "top": rows("DESC"), "bottom": rows("ASC")}
 
     # ---------------------------------------------------------------- funds
     @app.get("/api/funds/search")
@@ -163,13 +180,93 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                  f" n.date=(SELECT MAX(date) FROM fund_navs WHERE scheme_code=f.scheme_code)"
                  f" WHERE {where} ORDER BY f.name LIMIT 30", args)
 
-    @app.get("/api/funds/{code}")
-    def fund_detail(code: str, _: str = Depends(user)):
+    def fund_payload(code: str) -> dict:
         info = q("SELECT * FROM funds WHERE scheme_code=?", (code,))
         if not info:
-            raise HTTPException(404, "Fund not found")
-        navs = q("SELECT date, nav FROM fund_navs WHERE scheme_code=? ORDER BY date", (code,))
-        return {"info": info[0], "navs": navs}
+            raise HTTPException(404, f"Fund {code} not found")
+        loaded = q("SELECT 1 FROM pipeline_runs WHERE source='mfapi' AND date=? AND status='ok'"
+                   " AND started_at >= date('now', '-7 day')", (code,))
+        if not loaded:  # fetch full history once a week per fund, on first view
+            with lock:
+                pipeline.load_fund_history(conn, code)
+        navs = q("SELECT date, nav, source FROM fund_navs WHERE scheme_code=? ORDER BY date", (code,))
+        s = [(date.fromisoformat(n["date"]), n["nav"]) for n in navs]
+        stats = analytics.summary(s)
+        stats["consistency_1y"] = analytics.rolling_consistency(s, 1)
+        stats["consistency_3y"] = analytics.rolling_consistency(s, 3)
+        return {"kind": "fund", "code": code, "info": info[0], "stats": stats,
+                "navs": [{"date": n["date"], "nav": n["nav"]} for n in navs],
+                "sources": sorted({n["source"] for n in navs})}
+
+    @app.get("/api/funds/{code}")
+    def fund_detail(code: str, _: str = Depends(user)):
+        return fund_payload(code)
+
+    # ---------------------------------------------------------------- compare
+    @app.get("/api/compare")
+    def compare(items: str, _: str = Depends(user)):
+        """items: comma list like stock:TCS,fund:122639 (max 5)."""
+        out = []
+        for item in [i for i in items.split(",") if i][:5]:
+            kind, _, code = item.partition(":")
+            if kind == "stock":
+                d = stock_payload(code.upper())
+                adj = analytics.adjusted_series(d["history"])
+                name, hist = d["info"]["name"], [{"date": dt.isoformat(), "value": v} for dt, v in adj]
+            elif kind == "fund":
+                d = fund_payload(code)
+                name, hist = d["info"]["name"], [{"date": n["date"], "value": n["nav"]} for n in d["navs"]]
+            else:
+                raise HTTPException(400, f"Unknown item '{item}'. Use stock:SYMBOL or fund:CODE")
+            out.append({"kind": kind, "code": d["code"], "name": name, "stats": d["stats"],
+                        "score": d.get("score"), "history": hist[-800:]})
+        return out
+
+    # ---------------------------------------------------------------- portfolio
+    class Tx(BaseModel):
+        kind: str
+        code: str
+        side: str
+        date: str
+        quantity: float
+        price: float
+        note: str | None = None
+
+    class CsvBody(BaseModel):
+        csv: str
+
+    @app.get("/api/portfolio")
+    def get_portfolio(name: str = Depends(user)):
+        with lock:
+            return portfolio.summary(conn, name)
+
+    @app.post("/api/portfolio/transactions")
+    def add_tx(tx: Tx, name: str = Depends(user)):
+        with lock:
+            err = portfolio.add(conn, name, tx.model_dump())
+        if err:
+            raise HTTPException(400, err)
+        return {"ok": True}
+
+    @app.delete("/api/portfolio/transactions/{tx_id}")
+    def delete_tx(tx_id: int, name: str = Depends(user)):
+        with lock:
+            n = conn.execute("DELETE FROM transactions WHERE id=? AND username=?",
+                             (tx_id, name)).rowcount
+            conn.commit()
+        if not n:
+            raise HTTPException(404, "Transaction not found")
+        return {"ok": True}
+
+    @app.post("/api/portfolio/import")
+    def import_tx(body: CsvBody, name: str = Depends(user)):
+        if len(body.csv) > 1_000_000:
+            raise HTTPException(413, "File too large (1 MB max)")
+        with lock:
+            r = portfolio.import_csv(conn, name, body.csv)
+        if r["errors"]:
+            raise HTTPException(400, "; ".join(r["errors"]))
+        return r
 
     # ---------------------------------------------------------------- health
     @app.get("/api/health")
@@ -201,7 +298,8 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                     if today.weekday() < 5 and now.hour >= 19 and not c.execute(
                             "SELECT 1 FROM pipeline_runs WHERE source='nse_bhavcopy' AND date=?"
                             " AND status IN ('ok','no_data')", (today.isoformat(),)).fetchone():
-                        pipeline.load_stocks(c, today)
+                        if pipeline.load_stocks(c, today)["status"] == "ok":
+                            score.compute(c)
                     if now.hour >= 23 and not c.execute(
                             "SELECT 1 FROM pipeline_runs WHERE source='amfi_navall' AND"
                             " status='ok' AND started_at LIKE ?", (f"{today}%",)).fetchone():

@@ -37,6 +37,21 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
 );
 
 CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS stock_scores (
+    symbol TEXT NOT NULL, date TEXT NOT NULL, score INTEGER,
+    components TEXT, metrics TEXT, reasons TEXT, universe INTEGER,
+    PRIMARY KEY (symbol, date)
+);
+
+CREATE TABLE IF NOT EXISTS transactions (
+    id INTEGER PRIMARY KEY, username TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('stock', 'fund')),
+    code TEXT NOT NULL, side TEXT NOT NULL CHECK (side IN ('buy', 'sell')),
+    date TEXT NOT NULL, quantity REAL NOT NULL CHECK (quantity > 0),
+    price REAL NOT NULL CHECK (price > 0), note TEXT, created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_tx_user ON transactions(username);
 """
 
 

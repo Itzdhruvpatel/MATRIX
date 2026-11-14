@@ -78,7 +78,7 @@ def test_fund_search_and_detail(client):
     res = client.get("/api/funds/search", params={"query": "large cap", "direct_only": False}).json()
     assert len(res) == 2
     d = client.get("/api/funds/120465").json()
-    assert d["navs"][0]["nav"] == 65.12
+    assert d["navs"][-1]["nav"] == 65.12
 
 
 def test_health(client):
@@ -86,3 +86,45 @@ def test_health(client):
     h = client.get("/api/health").json()
     assert h["nse_bhavcopy"]["latest_date"] == "2026-11-13"
     assert h["runs"][0]["status"] == "ok"
+
+
+@pytest.fixture(autouse=True)
+def offline_history(monkeypatch):
+    payload = {"data": [{"date": "13-11-2025", "nav": "52.00"}, {"date": "12-11-2026", "nav": "64.00"}]}
+    monkeypatch.setattr(pipeline.mfapi, "download", lambda code: payload)
+
+
+def test_fund_detail_loads_history_and_stats(client, offline_history):
+    login(client)
+    d = client.get("/api/funds/120465").json()
+    assert [n["date"] for n in d["navs"]] == ["2025-11-13", "2026-11-12", "2026-11-13"]
+    assert d["stats"]["return_1y"] == pytest.approx(65.12 / 52 - 1, abs=1e-3)
+    assert d["sources"] == ["amfi_navall", "mfapi"]
+
+
+def test_portfolio_endpoints(client):
+    login(client)
+    tx = {"kind": "stock", "code": "RELIANCE", "side": "buy", "date": "2026-01-02", "quantity": 10, "price": 1200}
+    assert client.post("/api/portfolio/transactions", json=tx).status_code == 200
+    bad = client.post("/api/portfolio/transactions", json={**tx, "code": "NOPE"})
+    assert bad.status_code == 400 and "unknown" in bad.json()["detail"]
+    p = client.get("/api/portfolio").json()
+    assert p["value"] == pytest.approx(13397) and len(p["holdings"]) == 1
+    tx_id = p["transactions"][0]["id"]
+    assert client.delete(f"/api/portfolio/transactions/{tx_id}").status_code == 200
+    assert client.get("/api/portfolio").json()["holdings"] == []
+    r = client.post("/api/portfolio/import", json={"csv": "type,code,side,date,quantity,price\nstock,RELIANCE,buy,2026-01-02,1,1000"})
+    assert r.json()["added"] == 1
+
+
+def test_compare(client, offline_history):
+    login(client)
+    c = client.get("/api/compare", params={"items": "stock:RELIANCE,fund:120465"}).json()
+    assert [x["code"] for x in c] == ["RELIANCE", "120465"]
+    assert client.get("/api/compare", params={"items": "bond:X"}).status_code == 400
+
+
+def test_compare_uses_split_adjusted_prices(client):
+    login(client)
+    c = client.get("/api/compare", params={"items": "stock:RELIANCE"}).json()
+    assert c[0]["history"][-1]["value"] == pytest.approx(1339.70)
