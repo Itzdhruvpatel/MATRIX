@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Matrix</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <!-- Login -->
+  <main id="login-view" class="login" hidden>
+    <form id="login-form" class="login-card">
+      <h1 class="wordmark">Matrix</h1>
+      <p class="muted">Your market, read every evening.</p>
+      <label>Username <input name="username" autocomplete="username" required></label>
+      <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+      <p id="login-error" class="error" role="alert"></p>
+      <button type="submit">Log in</button>
+    </form>
+  </main>
+
+  <!-- App -->
+  <div id="app-view" hidden>
+    <header class="topbar">
+      <span class="wordmark small">Matrix</span>
+      <div class="search">
+        <input id="search" type="search" placeholder="Search a stock or mutual fund" autocomplete="off" aria-label="Search stocks and mutual funds">
+        <ul id="search-results" class="search-results" hidden></ul>
+      </div>
+      <span id="asof" class="asof"></span>
+      <button id="logout" class="ghost">Log out</button>
+    </header>
+
+    <main class="page">
+      <section class="hero" aria-live="polite">
+        <p id="hero-date" class="hero-date"></p>
+        <h1 id="hero-line" class="hero-line">Loading today's market...</h1>
+        <div class="breadth" id="breadth" aria-hidden="true">
+          <span class="adv"></span><span class="unch"></span><span class="dec"></span>
+        </div>
+        <div class="breadth-legend" id="breadth-legend"></div>
+      </section>
+
+      <section class="grid two">
+        <div class="panel">
+          <h2>Biggest gainers</h2>
+          <p class="note">Stocks with at least Rs 10 crore traded today</p>
+          <table id="gainers" class="movers"></table>
+        </div>
+        <div class="panel">
+          <h2>Biggest losers</h2>
+          <p class="note">Stocks with at least Rs 10 crore traded today</p>
+          <table id="losers" class="movers"></table>
+        </div>
+      </section>
+
+      <section class="grid two">
+        <div class="panel">
+          <h2>Where the money traded</h2>
+          <p class="note">Highest value traded today</p>
+          <table id="active" class="movers"></table>
+        </div>
+        <div class="panel">
+          <h2>Unusual moves</h2>
+          <p class="note">Moved more than 20% in a day. Check the news before acting.</p>
+          <ul id="flags" class="flags"></ul>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Data health</h2>
+        <p class="note">Where every number comes from, and whether it is fresh</p>
+        <div id="health" class="health"></div>
+      </section>
+
+      <footer class="disclaimer">
+        Matrix is a personal research tool. It does not give investment advice or guarantee returns.
+        Data: NSE daily bhavcopy and AMFI NAVs. Prices are end of day, not live.
+      </footer>
+    </main>
+
+    <aside id="drawer" class="drawer" aria-hidden="true">
+      <div class="drawer-inner" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+        <button id="drawer-close" class="ghost close" aria-label="Close">Close</button>
+        <p id="drawer-kicker" class="muted"></p>
+        <h2 id="drawer-title"></h2>
+        <div id="drawer-price" class="drawer-price"></div>
+        <div id="chart" class="chart"></div>
+        <dl id="drawer-stats" class="stats"></dl>
+        <div id="drawer-flags"></div>
+        <p id="drawer-source" class="source"></p>
+      </div>
+    </aside>
+    <div id="scrim" class="scrim" hidden></div>
+  </div>
+</body>
+</html>
