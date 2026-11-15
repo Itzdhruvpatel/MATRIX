@@ -6,13 +6,12 @@
   <title>Matrix</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Liu+Jian+Mao+Cao&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
-  <div class="sky" aria-hidden="true"><canvas id="burst"></canvas></div>
   <main id="login-view" class="login" hidden>
     <form id="login-form" class="login-card">
       <div class="brand big">Matrix</div>
@@ -26,7 +25,7 @@
 
   <div id="app-view" hidden>
     <header class="topbar">
-      <div class="brand">Matrix</div>
+      <div class="brand">Matrix <i>Market edition</i></div>
       <nav class="tabs" aria-label="Sections">
         <button data-tab="today" aria-current="page">Market today</button>
         <button data-tab="ratings">Ratings</button>
@@ -43,16 +42,24 @@
 
     <!-- MARKET TODAY -->
     <main class="page" data-view="today">
-      <section class="note">
+      <section class="note hero">
         <div class="note-body">
           <p class="note-date" id="hero-date"></p>
-          <h1 id="mood-title" class="note-title">Reading the market...</h1>
-          <p id="mood-text" class="note-sub"></p>
-          <div class="kpis three">
-            <div class="kpi"><span class="kpi-label">Went up</span><span class="kpi-value up" id="kpi-up">-</span></div>
-            <div class="kpi"><span class="kpi-label">Went down</span><span class="kpi-value down" id="kpi-down">-</span></div>
-            <div class="kpi"><span class="kpi-label">Money traded</span><span class="kpi-value" id="kpi-money">-</span></div>
-          </div>
+          <h1 id="mood-title" class="note-title giant">Reading the market</h1>
+          <div class="coin-wrap" aria-hidden="true"><div class="coin"><span>&#8377;</span></div></div>
+          <div id="notes" class="notes" aria-hidden="true"></div>
+          <p id="mood-text" class="note-sub byline"></p>
+        </div>
+      </section>
+
+      <p class="story" id="story"></p>
+
+      <section class="card">
+        <h2>The last 20 trading days</h2>
+        <p class="hint">Each bar is one day: how many of every 100 stocks rose. Above the dashed line, more rose than fell.</p>
+        <div class="bars-chart">
+          <svg id="breadth-chart" role="img" aria-label="Bar chart: share of stocks that rose each day"></svg>
+          <div class="chart-key"><span><i style="background:var(--gain)"></i>More than half rose</span><span><i style="background:var(--loss)"></i>More than half fell</span></div>
         </div>
       </section>
 
@@ -67,7 +74,7 @@
         </div>
       </section>
 
-      <section class="card warn-card">
+      <section class="card block">
         <h2>Be careful with these</h2>
         <p class="hint">They moved more than 20% in one day. Check the news before touching them.</p>
         <ul id="flags" class="list compact"></ul>

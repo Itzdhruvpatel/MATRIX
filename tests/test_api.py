@@ -155,3 +155,9 @@ def test_pages_are_not_cached_but_api_is_untouched(client):
     assert client.get("/").headers["cache-control"] == "no-cache"
     assert client.get("/style.css").headers["cache-control"] == "no-cache"
     assert "cache-control" not in client.get("/api/me").headers
+
+
+def test_market_summary_has_daily_history(client):
+    login(client)
+    h = client.get("/api/market/summary").json()["history"]
+    assert h == [{"date": "2026-11-13", "adv": 1, "dec": 0, "total": 1}]

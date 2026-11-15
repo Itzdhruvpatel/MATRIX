@@ -12,7 +12,7 @@ const plainPct = (f) => `${Math.abs(f * 100).toFixed(0)}%`;
 const longDate = (d) => new Date(d + "T00:00:00").toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 const shortDate = (d) => new Date(d + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const SERIES_COLORS = ["#00e0b0", "#5b8cff", "#ffb36b", "#c084fc"];
+const SERIES_COLORS = ["#151515", "#0b8a5c", "#b8322a", "#c08a1e"];
 const tip = (text) => `<button class="tip" type="button" aria-label="${esc(text)}" data-tip="${esc(text)}">?</button>`;
 
 async function api(path, opts = {}) {
@@ -50,54 +50,42 @@ window.addEventListener("hashchange", () => { if (!$("app-view").hidden) switchT
 
 setTimeout(() => document.body.classList.add("settled"), 2500);
 
-/* ---------------------------------------------------------------- light burst */
-// A star of light rays at the top of the page that slowly turns and shimmers.
-(function burst() {
-  const cv = $("burst"), ctx = cv.getContext("2d");
-  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let w, h, dpr, rays = [];
-  const rnd = (a, b) => a + Math.random() * (b - a);
-  function size() {
-    dpr = Math.min(devicePixelRatio || 1, 2);
-    w = cv.clientWidth; h = cv.clientHeight;
-    cv.width = w * dpr; cv.height = h * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    rays = Array.from({ length: 220 }, () => ({
-      a: rnd(0, Math.PI * 2), len: rnd(0.15, 1) ** 2 * Math.max(w, h) * 0.55,
-      wid: rnd(0.5, 1.8), alpha: rnd(0.12, 0.65), speed: rnd(0.4, 1.6), phase: rnd(0, 6.28),
-    }));
-  }
-  function draw(t) {
-    const top = document.querySelector(".topbar")?.offsetHeight || 60;
-    const narrow = w < 720;  // on phones keep the bright core off the text
-    const cx = w * (narrow ? 0.9 : 0.62), cy = top + (narrow ? 10 : 70), spin = t * 0.00002;
-    ctx.clearRect(0, 0, w, h);
-    ctx.globalCompositeOperation = "lighter";
-    for (const r of rays) {
-      const a = r.a + spin, flick = 0.65 + 0.35 * Math.sin(t * 0.001 * r.speed + r.phase);
-      const x = cx + Math.cos(a) * r.len, y = cy + Math.sin(a) * r.len * 0.8;
-      const g = ctx.createLinearGradient(cx, cy, x, y);
-      g.addColorStop(0, `rgba(220,232,255,${r.alpha * flick})`);
-      g.addColorStop(1, "rgba(120,150,255,0)");
-      ctx.strokeStyle = g; ctx.lineWidth = r.wid;
-      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke();
-    }
-    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, 140);
-    core.addColorStop(0, "rgba(255,255,255,0.95)");
-    core.addColorStop(0.08, "rgba(200,215,255,0.55)");
-    core.addColorStop(1, "rgba(80,110,255,0)");
-    ctx.fillStyle = core; ctx.beginPath(); ctx.arc(cx, cy, 140, 0, Math.PI * 2); ctx.fill();
-    ctx.globalCompositeOperation = "source-over";
-  }
-  let last = 0;
-  function loop(t) {
-    if (!document.hidden && t - last > 33) { draw(t); last = t; }  // about 30 frames a second
-    requestAnimationFrame(loop);
-  }
-  size();
-  addEventListener("resize", () => { size(); draw(performance.now()); });
-  if (still) draw(0); else requestAnimationFrame(loop);
-})();
+// The story paragraph darkens word by word as it scrolls into view.
+function splitStory() {
+  const el = $("story");
+  el.innerHTML = el.innerHTML.replace(/(<em>.*?<\/em>)|([^\s<]+)/g, (m, em, w) => (em ? em : `<span>${w}</span>`));
+  revealStory();
+}
+function revealStory() {
+  const el = $("story");
+  if (!el || el.closest("[hidden]")) return;
+  const words = el.querySelectorAll("span"), r = el.getBoundingClientRect();
+  const p = Math.min(Math.max((innerHeight * 0.9 - r.top) / (r.height + innerHeight * 0.3), 0), 1);
+  words.forEach((w, i) => w.classList.toggle("lit", i / words.length < p));
+}
+addEventListener("scroll", revealStory, { passive: true });
+
+// Buttons that jump to another tab.
+document.addEventListener("click", (e) => { const g = e.target.closest("[data-goto]"); if (g) { switchTab(g.dataset.goto); scrollTo({ top: 0 }); } });
+
+// Bar chart: share of stocks that rose on each recent day.
+function drawBreadth(history) {
+  const svg = $("breadth-chart");
+  if (!svg || !history?.length) return;
+  const W = 1000, H = 170, pad = 22, n = history.length, slot = (W - pad) / n, bw = Math.min(slot * 0.62, 34);
+  const bars = history.map((d, i) => {
+    const share = d.adv / Math.max(d.total, 1), bh = Math.max(share * (H - 30), 2);
+    const x = pad + i * slot + (slot - bw) / 2, y = H - 18 - bh;
+    const color = share >= 0.5 ? "var(--gain)" : "var(--loss)";
+    const label = `${shortDate(d.date)}: ${Math.round(share * 100)}% of stocks rose`;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="4" fill="${color}" opacity="${i === n - 1 ? 1 : 0.78}" style="animation-delay:${600 + i * 45}ms"><title>${label}</title></rect>` +
+      (i === 0 || i === n - 1 || i === Math.floor(n / 2) ? `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 2}" text-anchor="middle">${shortDate(d.date).replace(/ \d{4}$/, "")}</text>` : "");
+  }).join("");
+  const halfY = H - 18 - 0.5 * (H - 30);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.innerHTML = `<line class="half" x1="${pad}" x2="${W}" y1="${halfY}" y2="${halfY}"/><text x="0" y="${halfY + 4}">50%</text>${bars}`;
+}
 
 /* ---------------------------------------------------------------- shared */
 function scoreLevel(s) {
@@ -135,12 +123,22 @@ async function loadToday() {
   if (!s.date) { $("mood-title").textContent = "No market data yet"; $("mood-text").textContent = "Run the data loader once, then come back."; return; }
   const b = s.breadth, total = b.adv + b.dec + b.unch;
   const fell = Math.round((b.dec / total) * 10), rose = Math.round((b.adv / total) * 10);
-  $("hero-date").textContent = longDate(s.date) + (s.stale ? " (this data is old, run the data loader)" : "");
-  $("mood-title").innerHTML = fell > rose ? `${fell} in 10 stocks <span class="fall">fell today.</span>` : rose > fell ? `${rose} in 10 stocks <span class="gain">rose today.</span>` : "Half rose, half fell today.";
-  $("mood-text").textContent = fell > rose ? "More companies lost value than gained today." : rose > fell ? "More companies gained value than lost today." : "The market was evenly split today.";
-  countUp($("kpi-up"), b.adv);
-  countUp($("kpi-down"), b.dec);
-  $("kpi-money").textContent = bigMoney(b.turnover);
+  $("hero-date").textContent = `The Indian market, ${longDate(s.date)}` + (s.stale ? " (old data: run the data loader)" : "");
+  $("mood-title").innerHTML = fell > rose ? `${fell} in 10<br><span class="r">fell</span>` : rose > fell ? `${rose} in 10<br><span class="g">rose</span>` : `Half<br>and half`;
+  $("mood-text").innerHTML = `${whole.format(b.adv)} rose, ${whole.format(b.dec)} fell, <b>${bigMoney(b.turnover)}</b> changed hands`;
+  // Handwritten notes around the headline: today's biggest moves, like chess moves in the margin.
+  const slots = [[6, 20, -6], [13, 58, 5], [22, 36, -3], [72, 20, 4], [66, 62, -5], [76, 44, 2]];
+  const moves = [...s.gainers.slice(0, 3), ...s.losers.slice(0, 3)];
+  $("notes").innerHTML = moves.map((m, i) => {
+    const [x, y, a] = slots[i];
+    return `<span class="hand ${m.change_pct < 0 ? "r" : ""}" style="left:${x}%;top:${y}%;--a:${a}deg">${esc(m.symbol)} ${m.change_pct > 0 ? "+" : ""}${m.change_pct.toFixed(1)}<b class="pc">%</b></span>`;
+  }).join("");
+  const top = s.gainers[0], low = s.losers[0];
+  const note = (m) => m ? `<em>${esc(m.symbol)} ${m.change_pct > 0 ? "+" : ""}${m.change_pct.toFixed(1)}<b class="pc">%</b></em>` : "";
+  $("story").innerHTML = (fell > rose ? "Most companies lost value today" : rose > fell ? "Most companies gained value today" : "The market was split down the middle today") +
+    `, and ${bigMoney(b.turnover)} changed hands. The biggest jump was ${top ? esc(top.symbol) : "nobody"}${note(top)}, while ${low ? esc(low.symbol) : "nobody"}${note(low)} fell the hardest. One day is a move, not the whole game. Check what you own before you act.`;
+  splitStory();
+  drawBreadth(s.history);
   $("gainers").innerHTML = s.gainers.slice(0, 5).map(stockRow).join("") || `<li class="empty">No company passed the filter today.</li>`;
   $("losers").innerHTML = s.losers.slice(0, 5).map(stockRow).join("") || `<li class="empty">No company passed the filter today.</li>`;
   $("flags").innerHTML = s.flags.length
@@ -185,8 +183,8 @@ async function loadPortfolio() {
       (p.realised_gain ? ` From things you already sold, you ${p.realised_gain >= 0 ? "made" : "lost"} ${rupees(Math.abs(p.realised_gain))}.` : "");
   const a = p.allocation, st = a.stock || 0, fd = a.fund || 0;
   $("pf-alloc").innerHTML = has ? `<span class="kpi-label">How your money is split</span>
-    <div class="alloc-bar"><span style="width:${st * 100}%;background:var(--brand)"></span><span style="width:${fd * 100}%;background:var(--blue)"></span></div>
-    <div class="alloc-legend"><span><i style="background:var(--brand)"></i>Stocks ${Math.round(st * 100)}%</span><span><i style="background:var(--blue)"></i>Mutual funds ${Math.round(fd * 100)}%</span></div>` : "";
+    <div class="alloc-bar"><span style="width:${st * 100}%;background:var(--green)"></span><span style="width:${fd * 100}%;background:var(--ink)"></span></div>
+    <div class="alloc-legend"><span><i style="background:var(--green)"></i>Stocks ${Math.round(st * 100)}%</span><span><i style="background:var(--ink)"></i>Mutual funds ${Math.round(fd * 100)}%</span></div>` : "";
   $("pf-warnings").innerHTML = p.warnings.map((w) => `<div class="warn">${esc(w.text)} Too much in one company means one bad event can hurt a lot.</div>`).join("");
   $("pf-holdings").innerHTML = has
     ? `<div class="h-row head"><span>Holding</span><span class="num">Value</span><span class="num">Profit or loss</span><span class="num hide-sm">Yearly growth</span><span class="num hide-sm">Share of total</span></div>` +
@@ -340,10 +338,10 @@ $("drawer-watch").addEventListener("click", async () => {
 function chartOptions() {
   return {
     autoSize: true,
-    layout: { background: { color: "transparent" }, textColor: "#8f9abd", fontFamily: "Sora" },
-    grid: { vertLines: { visible: false }, horzLines: { color: "rgba(255,255,255,0.08)" } },
+    layout: { background: { color: "transparent" }, textColor: "#6d6d6a", fontFamily: "Inter Tight" },
+    grid: { vertLines: { visible: false }, horzLines: { color: "rgba(0,0,0,0.07)" } },
     rightPriceScale: { borderVisible: false }, timeScale: { borderVisible: false, minBarSpacing: 0.001 },
-    crosshair: { horzLine: { labelBackgroundColor: "#1f4bff" }, vertLine: { labelBackgroundColor: "#1f4bff" } },
+    crosshair: { horzLine: { labelBackgroundColor: "#151515" }, vertLine: { labelBackgroundColor: "#151515" } },
   };
 }
 function newChart() { if (chart) chart.remove(); chart = LightweightCharts.createChart($("chart"), chartOptions()); return chart; }
@@ -376,7 +374,7 @@ async function openStock(symbol) {
   if (sc) lines.push(`Matrix rates it <b>${sc.score} out of 100 (${scoreLevel(sc.score)[0]})</b> for how its price behaved. This is not a buy or sell signal.`);
   $("drawer-simple").innerHTML = `<h3>In simple words</h3>${lines.map((l) => `<p>${l}</p>`).join("")}`;
 
-  newChart().addCandlestickSeries({ upColor: "#2ff0b5", downColor: "#ff6b7d", wickUpColor: "#2ff0b5", wickDownColor: "#ff6b7d", borderVisible: false })
+  newChart().addCandlestickSeries({ upColor: "#0b8a5c", downColor: "#b8322a", wickUpColor: "#0b8a5c", wickDownColor: "#b8322a", borderVisible: false })
     .setData(d.history.map((h) => ({ time: h.date, open: h.open, high: h.high, low: h.low, close: h.close })));
   chart.timeScale().fitContent();
   $("drawer-stats").innerHTML =
@@ -416,7 +414,7 @@ async function openFund(code) {
   if (st.max_drawdown_all != null) lines.push(`Its worst fall ever was <b>${plainPct(st.max_drawdown_all)}</b> from a high. Funds like this can drop that much again.`);
   $("drawer-simple").innerHTML = `<h3>In simple words</h3>${lines.map((l) => `<p>${l}</p>`).join("") || "<p>Not enough history yet to summarise.</p>"}`;
 
-  newChart().addAreaSeries({ lineColor: "#00e0b0", topColor: "rgba(0,224,176,.35)", bottomColor: "rgba(0,224,176,0)", lineWidth: 2 })
+  newChart().addAreaSeries({ lineColor: "#0b8a5c", topColor: "rgba(11,138,92,.22)", bottomColor: "rgba(11,138,92,0)", lineWidth: 2 })
     .setData(d.navs.map((n) => ({ time: n.date, value: n.nav })));
   chart.timeScale().fitContent();
   $("drawer-stats").innerHTML =

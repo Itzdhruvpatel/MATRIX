@@ -113,6 +113,11 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
             "losers": q(f"{liquid} ORDER BY change_pct ASC LIMIT 10", (latest,)),
             "most_active": q(f"{base} ORDER BY value DESC LIMIT 10", (latest,)),
             "heatmap": q(f"{liquid} ORDER BY value DESC LIMIT 120", (latest,)),
+            # Share of stocks that rose on each of the last 20 trading days, oldest first.
+            "history": q("SELECT date, SUM(close > prev_close) adv, SUM(close < prev_close) dec,"
+                         " COUNT(*) total FROM stock_prices WHERE series='EQ' AND date IN"
+                         " (SELECT DISTINCT date FROM stock_prices ORDER BY date DESC LIMIT 20)"
+                         " GROUP BY date ORDER BY date"),
             "flags": q("SELECT key AS symbol, reason FROM data_issues WHERE date=?"
                        " AND severity='flagged' ORDER BY key LIMIT 50", (latest,)),
         }
