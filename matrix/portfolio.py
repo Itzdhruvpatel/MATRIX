@@ -49,10 +49,13 @@ def validate_tx(conn, tx: dict, held: dict) -> str | None:
     return None
 
 
-def holdings_qty(conn, username: str) -> dict:
+BOOKS = ("real", "paper")  # paper = practice money
+
+
+def holdings_qty(conn, username: str, book: str = "real") -> dict:
     held = defaultdict(float)
-    for r in conn.execute("SELECT kind, code, side, quantity FROM transactions WHERE username=?",
-                          (username,)):
+    for r in conn.execute("SELECT kind, code, side, quantity FROM transactions WHERE username=?"
+                          " AND book=?", (username, book)):
         held[(r[0], r[1])] += r[3] if r[2] == "buy" else -r[3]
     return held
 
@@ -60,19 +63,22 @@ def holdings_qty(conn, username: str) -> dict:
 def add(conn, username: str, tx: dict) -> str | None:
     tx = {**tx, "code": str(tx["code"]).strip().upper() if tx["kind"] == "stock"
           else str(tx["code"]).strip()}
-    err = validate_tx(conn, tx, holdings_qty(conn, username))
+    book = tx.get("book") or "real"
+    if book not in BOOKS:
+        return "book must be 'real' or 'paper'"
+    err = validate_tx(conn, tx, holdings_qty(conn, username, book))
     if err:
         return err
     conn.execute(
         "INSERT INTO transactions (username, kind, code, side, date, quantity, price, note,"
-        " created_at) VALUES (?,?,?,?,?,?,?,?,datetime('now'))",
+        " book, created_at) VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))",
         (username, tx["kind"], tx["code"], tx["side"], tx["date"], tx["quantity"], tx["price"],
-         tx.get("note")))
+         tx.get("note"), book))
     conn.commit()
     return None
 
 
-def import_csv(conn, username: str, text: str) -> dict:
+def import_csv(conn, username: str, text: str, book: str = "real") -> dict:
     """All-or-nothing import. Columns: type,code,side,date,quantity,price"""
     reader = csv.DictReader(io.StringIO(text.strip()))
     need = {"type", "code", "side", "date", "quantity", "price"}
@@ -89,7 +95,9 @@ def import_csv(conn, username: str, text: str) -> dict:
             return {"added": 0, "errors": [f"line {line}: quantity and price must be numbers"]}
         if len(rows) > MAX_IMPORT_ROWS:
             return {"added": 0, "errors": [f"more than {MAX_IMPORT_ROWS} rows"]}
-    held = holdings_qty(conn, username)
+    if book not in BOOKS:
+        return {"added": 0, "errors": ["book must be 'real' or 'paper'"]}
+    held = holdings_qty(conn, username, book)
     errors = []
     for line, tx in sorted(rows, key=lambda x: x[1]["date"]):
         if tx["kind"] == "stock":
@@ -102,17 +110,17 @@ def import_csv(conn, username: str, text: str) -> dict:
     if errors:
         return {"added": 0, "errors": errors[:20]}
     conn.executemany(
-        "INSERT INTO transactions (username, kind, code, side, date, quantity, price, created_at)"
-        " VALUES (?,?,?,?,?,?,?,datetime('now'))",
-        [(username, t["kind"], t["code"], t["side"], t["date"], t["quantity"], t["price"])
+        "INSERT INTO transactions (username, kind, code, side, date, quantity, price, book,"
+        " created_at) VALUES (?,?,?,?,?,?,?,?,datetime('now'))",
+        [(username, t["kind"], t["code"], t["side"], t["date"], t["quantity"], t["price"], book)
          for _, t in rows])
     conn.commit()
     return {"added": len(rows), "errors": []}
 
 
-def summary(conn, username: str) -> dict:
+def summary(conn, username: str, book: str = "real") -> dict:
     txs = [dict(r) for r in conn.execute(
-        "SELECT * FROM transactions WHERE username=? ORDER BY date, id", (username,))]
+        "SELECT * FROM transactions WHERE username=? AND book=? ORDER BY date, id", (username, book))]
     groups = defaultdict(list)
     for t in txs:
         groups[(t["kind"], t["code"])].append(t)

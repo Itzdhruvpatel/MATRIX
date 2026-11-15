@@ -27,6 +27,19 @@ This is a research tool. It does not give investment advice, place trades, or gu
 - Large bulk and block deals
 - Every alert says what happened, why it matters, and links to the filing
 
+**Market mood**
+- Calm, Nervous, Stressed or Panic, from how much the Nifty swings, how far it is below its high, and how many stocks are rising
+
+**Prediction Ledger (Ratings tab)**
+- Re-scores past months using only what was known then, and checks how Strong and Weak stocks did over the next month against the Nifty
+- Every month stays on the record, good or bad
+
+**What if, tax and journal (Portfolio tab)**
+- What if the market falls or rises: estimated effect on each holding, based on how it moved with the Nifty over the past year
+- Tax if you sold today: short-term and long-term gains matched first-in, first-out, with the yearly tax-free limit (rules from the July 2024 Budget)
+- Investment journal: why you bought, when you would sell, and a review date
+- Practice money: a separate pretend portfolio for trying ideas
+
 **Compare**
 - Up to 4 stocks or funds on one chart, all starting at 100, with returns and risk side by side
 
@@ -71,6 +84,8 @@ matrix/analytics.py returns, risk, XIRR, split adjustment
 matrix/score.py   Matrix Score
 matrix/portfolio.py holdings and returns
 matrix/radar.py   Danger Radar rules and alerts
+matrix/insights.py market mood, what-if scenarios, tax view
+matrix/ledger.py  Prediction Ledger (score track record)
 matrix/pipeline.py  fetch, validate, store
 matrix/db.py      SQLite schema
 matrix/auth.py    passwords and sessions

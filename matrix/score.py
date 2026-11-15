@@ -93,8 +93,10 @@ def score_universe(stocks: dict[str, dict]) -> dict[str, dict]:
     return out
 
 
-def compute(conn) -> int:
-    latest = conn.execute("SELECT MAX(date) FROM stock_prices").fetchone()[0]
+def compute(conn, as_of: str | None = None) -> int:
+    """Score every liquid stock on `as_of` (default: the latest trading day), using only data
+    available on that day."""
+    latest = as_of or conn.execute("SELECT MAX(date) FROM stock_prices").fetchone()[0]
     if not latest:
         return 0
     series_today = dict(conn.execute(
@@ -103,8 +105,8 @@ def compute(conn) -> int:
     by_symbol = defaultdict(list)
     for r in conn.execute(
             "SELECT symbol, date, close, prev_close, value FROM stock_prices"
-            " WHERE series IN ('EQ','BE','BZ') AND date >= date(?, '-400 day') ORDER BY date",
-            (latest,)):
+            " WHERE series IN ('EQ','BE','BZ') AND date >= date(?, '-400 day') AND date <= ?"
+            " ORDER BY date", (latest, latest)):
         if r["symbol"] in series_today:
             by_symbol[r["symbol"]].append(dict(r))
     stocks = {}

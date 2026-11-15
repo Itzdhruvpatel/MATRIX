@@ -12,6 +12,8 @@ Status as of 14 November 2026. Full plan: `docs/Matrix-Design.pdf`.
 - Matrix Score v1 for about 1,500 stocks (price behaviour only)
 - Portfolio: add or import buys and sells, profit, yearly growth (XIRR), over-10% warnings
 - Compare up to 4 stocks or funds on one chart
+- Market mood, what-if scenarios, tax view, investment journal, practice money
+- Prediction Ledger: past scores checked against what really happened
 - Danger Radar v1: price rules, official NSE filings (announcements, pledges, insider trades), big deals, follow list, Alerts screen
 
 Effort key: S = a day or less, M = a few days, L = a week or more.
@@ -36,12 +38,8 @@ Effort key: S = a day or less, M = a few days, L = a week or more.
 
 ### Phase 4: Forecast model, Prediction Ledger, paper portfolio
 - Forecast card: chance of beating the index over 1, 3 and 12 months, with a likely range. Never a sure thing. Source: stored history. L
-- Market mood detector (calm, nervous, stressed, crisis). S
-- Prediction Ledger: every forecast saved and scored later against what really happened. This is how accuracy is measured honestly. M
 - Testing on past years the model never saw, compared with simply buying a Nifty index fund. L
 - Kill switch: hide forecasts if they do worse than the index fund for 3 months. S
-- Paper portfolio: try ideas with pretend money. M
-- Investment journal: write down why you bought, get reminded to review. S
 - Cooling-off check before large or risky moves. S
 
 ### Phase 5: Paper trading period
@@ -50,8 +48,6 @@ Effort key: S = a day or less, M = a few days, L = a week or more.
 ### Phase 6: More assets and tools
 - IPO analyser: business quality, price vs similar companies, how much promoters are selling. Source: offer documents (DRHP/RHP). L
 - Bond analyser: yield, rating, what happens if interest rates move. Source: RBI, CCIL, NSE debt segment. M
-- Tax view: tax if you sell today, short vs long term, loss harvesting. S
-- Scenario tester: "market falls 25%", "rates up 1%". M
 - Backtester: test a rule on past years with costs and taxes. L
 - Fund extras: expense ratio, direct vs regular cost, fund manager changes, portfolio overlap. Source: AMC monthly disclosures. M
 - Goal tracker and allocation builder (with ranges of outcomes, not single numbers). M

@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from matrix import analytics, auth, db, pipeline, portfolio, radar, score
+from matrix import analytics, auth, db, insights, ledger, pipeline, portfolio, radar, score
 
 ROOT = Path(__file__).resolve().parent.parent
 COOKIE = "matrix_session"
@@ -250,14 +250,21 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         quantity: float
         price: float
         note: str | None = None
+        book: str = "real"
 
     class CsvBody(BaseModel):
         csv: str
+        book: str = "real"
+
+    def check_book(book: str) -> str:
+        if book not in portfolio.BOOKS:
+            raise HTTPException(400, "book must be 'real' or 'paper'")
+        return book
 
     @app.get("/api/portfolio")
-    def get_portfolio(name: str = Depends(user)):
+    def get_portfolio(book: str = "real", name: str = Depends(user)):
         with lock:
-            return portfolio.summary(conn, name)
+            return portfolio.summary(conn, name, check_book(book))
 
     @app.post("/api/portfolio/transactions")
     def add_tx(tx: Tx, name: str = Depends(user)):
@@ -282,10 +289,87 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         if len(body.csv) > 1_000_000:
             raise HTTPException(413, "File too large (1 MB max)")
         with lock:
-            r = portfolio.import_csv(conn, name, body.csv)
+            r = portfolio.import_csv(conn, name, body.csv, check_book(body.book))
         if r["errors"]:
             raise HTTPException(400, "; ".join(r["errors"]))
         return r
+
+    # ---------------------------------------------------------------- insights
+    @app.get("/api/insights/mood")
+    def mood(_: str = Depends(user)):
+        with lock:
+            return insights.market_mood(conn)
+
+    @app.get("/api/insights/scenario")
+    def what_if(move: float, book: str = "real", name: str = Depends(user)):
+        if not -0.9 <= move <= 1.0:
+            raise HTTPException(400, "move must be between -0.9 and 1.0")
+        with lock:
+            return insights.scenario(conn, name, move, check_book(book))
+
+    @app.get("/api/insights/tax")
+    def tax(name: str = Depends(user)):
+        with lock:
+            return insights.tax_view(conn, name)
+
+    @app.get("/api/ledger")
+    def track_record(_: str = Depends(user)):
+        with lock:
+            return ledger.track_record(conn)
+
+    # ---------------------------------------------------------------- journal
+    class Entry(BaseModel):
+        kind: str = "stock"
+        code: str
+        note: str
+        sell_if: str | None = None
+        review_on: str
+
+    @app.get("/api/journal")
+    def journal(name: str = Depends(user)):
+        rows = q("SELECT id, kind, code, note, sell_if, review_on, reviewed, created_at FROM journal"
+                 " WHERE username=? ORDER BY reviewed, review_on", (name,))
+        today = pipeline.today_ist().isoformat()
+        for r in rows:
+            r["due"] = not r["reviewed"] and r["review_on"] <= today
+        return rows
+
+    @app.post("/api/journal")
+    def journal_add(e: Entry, name: str = Depends(user)):
+        code = e.code.strip().upper() if e.kind == "stock" else e.code.strip()
+        note = e.note.strip()
+        if not note or len(note) > 2000 or len(e.sell_if or "") > 1000:
+            raise HTTPException(400, "Write why you bought (up to 2,000 characters)")
+        try:
+            date.fromisoformat(e.review_on)
+        except ValueError:
+            raise HTTPException(400, "Review date must look like 2026-12-31")
+        with lock:
+            if e.kind not in ("stock", "fund") or portfolio.latest_price(conn, e.kind, code) is None:
+                raise HTTPException(400, f"Unknown {e.kind} '{e.code}'")
+            conn.execute("INSERT INTO journal (username, kind, code, note, sell_if, review_on, created_at)"
+                         " VALUES (?,?,?,?,?,?,datetime('now'))",
+                         (name, e.kind, code, note, (e.sell_if or "").strip() or None, e.review_on))
+            conn.commit()
+        return {"ok": True}
+
+    @app.post("/api/journal/{entry_id}/reviewed")
+    def journal_reviewed(entry_id: int, name: str = Depends(user)):
+        with lock:
+            n = conn.execute("UPDATE journal SET reviewed=1 WHERE id=? AND username=?", (entry_id, name)).rowcount
+            conn.commit()
+        if not n:
+            raise HTTPException(404, "Entry not found")
+        return {"ok": True}
+
+    @app.delete("/api/journal/{entry_id}")
+    def journal_delete(entry_id: int, name: str = Depends(user)):
+        with lock:
+            n = conn.execute("DELETE FROM journal WHERE id=? AND username=?", (entry_id, name)).rowcount
+            conn.commit()
+        if not n:
+            raise HTTPException(404, "Entry not found")
+        return {"ok": True}
 
     # ---------------------------------------------------------------- alerts + watchlist
     class Watch(BaseModel):

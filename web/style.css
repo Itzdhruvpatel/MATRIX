@@ -196,6 +196,29 @@ input[type="file"] { font-family: var(--sans); font-size: 0.9rem; border: 1px da
 .explain li { margin: 5px 0; }
 .explain p { font-size: 0.95rem; }
 
+/* Market mood, ledger, what-if, tax, journal */
+.mood h2 span { color: var(--green); }
+.mood.Nervous h2 span { color: var(--s3); } .mood.Stressed h2 span { color: var(--s2); } .mood.Panic h2 span { color: var(--s1); }
+.mood-meaning { font-family: var(--serif); font-size: 1.45rem; margin: 6px 0 8px; max-width: 60ch; }
+.mood-reasons { margin: 0; padding-left: 18px; color: var(--ink-2); }
+.mood-reasons li { margin: 3px 0; }
+.ledger-line, .whatif-line, .tax-line { font-family: var(--serif); font-size: 1.45rem; line-height: 1.25; margin: 8px 0 14px; max-width: 60ch; }
+.moves { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 8px; }
+.moves button.on { background: var(--ink); color: #fff; }
+.tax-kpis { justify-content: start; margin: 4px 0 6px; }
+.tax-kpis .kpi:first-child { padding-left: 0; }
+.tax-kpis .kpi-label { justify-content: flex-start; }
+.book-seg { width: min(360px, 100%); margin: 0 auto 14px; }
+textarea { padding: 10px 2px; border: 0; border-bottom: 1px solid var(--ink); background: transparent; font-family: var(--serif); font-size: 1.15rem; resize: vertical; min-width: 0; }
+textarea:focus { outline: none; border-bottom: 2px solid var(--green); }
+.j-item { padding: 12px 4px; }
+.j-item .sym { display: inline; }
+.j-item p { margin: 4px 0; font-family: var(--serif); font-size: 1.2rem; }
+.j-item small { color: var(--muted); }
+.j-item.due { background: var(--warn-soft); }
+.j-item .due-tag { font-family: var(--hand); color: var(--s2); font-size: 1.3rem; margin-left: 8px; }
+.j-actions { display: flex; gap: 6px; margin-top: 6px; }
+
 /* Alerts */
 .alert { display: flex; gap: 14px; align-items: flex-start; padding: 14px 4px; }
 .alert .tag { flex: none; font-family: var(--hand); font-size: 1.4rem; color: var(--c); min-width: 82px; transform: rotate(-4deg); }

@@ -146,6 +146,7 @@ async function loadToday() {
         <span class="pill ${f.reason.includes("+") ? "up" : "down"}">${esc(f.reason.replace("price jump ", "").replace(" in one day", ""))}</span></button></li>`).join("")
     : `<li class="empty">Nothing unusual today.</li>`;
   loadHealth();
+  loadMood();
 }
 async function loadHealth() {
   const h = await api("/api/health");
@@ -166,18 +167,25 @@ async function loadRatings() {
     <span class="why">${esc(s.reasons.slice(0, 2).map((x) => x.text).join(", ")) || "Average on every measure"}</span></span></button></li>`;
   $("top-rated").innerHTML = r.top.map(item).join("");
   $("bottom-rated").innerHTML = r.bottom.map(item).join("");
+  loadLedger();
 }
 
 /* ---------------------------------------------------------------- portfolio */
+let book = "real";
+document.querySelectorAll('input[name="book"]').forEach((r) => r.addEventListener("change", () => { book = r.value; loadPortfolio(); }));
 async function loadPortfolio() {
-  const p = await api("/api/portfolio");
+  const p = await api(`/api/portfolio?book=${book}`);
+  $("pf-heading").textContent = book === "paper" ? "My practice money is worth" : "My portfolio is worth";
+  document.querySelectorAll(".real-only").forEach((el) => (el.hidden = book !== "real"));
+  loadWhatIf(currentMove);
+  if (book === "real") { loadTax(); loadJournal(); }
   const has = p.holdings.length > 0;
   $("pf-value").textContent = rupees(p.value);
   $("pf-invested").textContent = rupees(p.invested);
   $("pf-gain").innerHTML = has ? `<span class="${sign(p.gain)}">${p.gain >= 0 ? "+" : ""}${rupees(p.gain)}</span>` : "-";
   $("pf-xirr").innerHTML = p.xirr == null ? "-" : `<span class="${sign(p.xirr)}">${fracText(p.xirr)}</span>`;
   $("pf-line").textContent = !has
-    ? "Nothing here yet. Add what you own below (one by one, or many at once with a file), and Matrix will track its value every day."
+    ? (book === "paper" ? "Practice with pretend money: add buys and sells below as if they were real, and see how your ideas would have done without risking a rupee." : "Nothing here yet. Add what you own below (one by one, or many at once with a file), and Matrix will track its value every day.")
     : `You put in ${rupees(p.invested)} and it is worth ${rupees(p.value)} today, a ${p.gain >= 0 ? "profit" : "loss"} of ${rupees(Math.abs(p.gain))} (${fracText(p.gain_pct)}).` +
       (p.xirr != null ? ` That works out to ${fracText(p.xirr)} a year.` : "") +
       (p.realised_gain ? ` From things you already sold, you ${p.realised_gain >= 0 ? "made" : "lost"} ${rupees(Math.abs(p.realised_gain))}.` : "");
@@ -208,7 +216,7 @@ $("tx-form").addEventListener("submit", async (e) => {
   const f = Object.fromEntries(new FormData(e.target)), msg = $("tx-msg");
   msg.className = "error"; msg.textContent = "";
   try {
-    await api("/api/portfolio/transactions", { method: "POST", body: JSON.stringify({ ...f, quantity: +f.quantity, price: +f.price }) });
+    await api("/api/portfolio/transactions", { method: "POST", body: JSON.stringify({ ...f, quantity: +f.quantity, price: +f.price, book }) });
     msg.className = "error ok"; msg.textContent = "Saved.";
     for (const k of ["code", "quantity", "price"]) e.target[k].value = "";
     loadPortfolio();
@@ -218,7 +226,7 @@ $("csv-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const msg = $("csv-msg"); msg.className = "error"; msg.textContent = "";
   try {
-    const r = await api("/api/portfolio/import", { method: "POST", body: JSON.stringify({ csv: await $("csv-file").files[0].text() }) });
+    const r = await api("/api/portfolio/import", { method: "POST", body: JSON.stringify({ csv: await $("csv-file").files[0].text(), book }) });
     msg.className = "error ok"; msg.textContent = `Added ${r.added} entries.`; e.target.reset(); loadPortfolio();
   } catch (err) { msg.textContent = err.message; }
 });
@@ -247,6 +255,87 @@ async function setWatch(kind, code, on) {
   if (on) await api("/api/watchlist", { method: "POST", body: JSON.stringify({ kind, code }) });
   else await api(`/api/watchlist/${kind}/${encodeURIComponent(code)}`, { method: "DELETE" });
 }
+
+/* ---------------------------------------------------------------- mood, ledger, what-if, tax, journal */
+async function loadMood() {
+  const m = await api("/api/insights/mood");
+  $("mood-card").className = `card mood ${m.level ?? ""}`;
+  $("mood-level").textContent = m.level ?? "not enough data";
+  $("mood-meaning").textContent = m.meaning ?? "";
+  $("mood-reasons").innerHTML = (m.reasons ?? []).map((r) => `<li>${esc(r)}</li>`).join("");
+}
+
+async function loadLedger() {
+  const t = await api("/api/ledger");
+  if (!t.periods.length) { $("ledger-line").textContent = "Not enough history yet. The first results appear once a full month has passed after a scored day."; $("ledger-table").innerHTML = ""; return; }
+  const n = t.periods.length, beat = t.strong_avg > t.market_avg;
+  $("ledger-line").innerHTML = `Over the last ${n} months, Strong stocks returned <b>${fracText(t.strong_avg)}</b> a month on average, Weak stocks <b>${fracText(t.weak_avg)}</b>, and the Nifty <b>${fracText(t.market_avg)}</b>. ` +
+    (beat ? `Strong stocks beat the Nifty on average. ` : `So far the score has <b>not</b> beaten simply owning the Nifty. `) +
+    `Strong stocks did better than the Nifty in ${t.strong_won_periods} of ${n} months.`;
+  $("ledger-table").innerHTML = `<tr><th style="text-align:left">Month starting</th><th>Strong stocks</th><th>Weak stocks</th><th>Nifty</th><th>Strong ones that beat the Nifty</th></tr>` +
+    t.periods.map((r) => `<tr><td>${shortDate(r.date)}</td><td class="${sign(r.strong_avg)}">${fracText(r.strong_avg)}</td><td class="${sign(r.weak_avg)}">${fracText(r.weak_avg)}</td><td class="${sign(r.market)}">${fracText(r.market)}</td><td>${Math.round(r.strong_beat_share * 100)} of 100</td></tr>`).join("");
+}
+
+let currentMove = -0.2;
+document.getElementById("moves").addEventListener("click", (e) => { const b = e.target.closest("[data-move]"); if (b) loadWhatIf(+b.dataset.move); });
+async function loadWhatIf(move) {
+  currentMove = move;
+  document.querySelectorAll("#moves button").forEach((b) => b.classList.toggle("on", +b.dataset.move === move));
+  const s = await api(`/api/insights/scenario?move=${move}&book=${book}`);
+  if (!s.holdings.length) { $("whatif-line").textContent = "Add holdings first, then see how they might react."; $("whatif-rows").innerHTML = ""; return; }
+  $("whatif-line").innerHTML = `If the Nifty ${move < 0 ? "falls" : "rises"} ${plainPct(move)}, your ${rupees(s.value)} could become about <b>${rupees(s.new_value)}</b> (${s.change >= 0 ? "+" : ""}${rupees(s.change)}).`;
+  $("whatif-rows").innerHTML = `<div class="h-row head"><span>Holding</span><span class="num">Moves with the Nifty</span><span class="num">Estimated change</span><span class="num hide-sm">Value after</span><span class="num hide-sm"></span></div>` +
+    s.holdings.map((h) => `<div class="h-row"><span><span class="sym">${esc(h.kind === "stock" ? h.code : h.name)}</span><span class="nm">${h.beta_known ? `Moves about ${h.beta.toFixed(1)}x the market` : "Not enough history: assumed to move like the market"}</span></span>
+      <span class="num">${h.beta.toFixed(2)}x</span><span class="num ${sign(h.change)}">${h.change >= 0 ? "+" : ""}${rupees(h.change)}<small>${fracText(h.change_pct)}</small></span>
+      <span class="num hide-sm">${rupees(h.new_value)}</span><span class="num hide-sm"></span></div>`).join("");
+}
+
+async function loadTax() {
+  const t = await api("/api/insights/tax");
+  $("tax-rules").textContent = `Listed shares and equity funds, using the tax rules from the ${t.rules_from}: 20% on short-term gains, 12.5% on long-term gains above Rs 1.25 lakh a year. Rules change, so check with a tax adviser before selling. This is an estimate, not tax advice.`;
+  $("tax-st").textContent = rupees(t.short_term_tax);
+  $("tax-lt").textContent = rupees(t.long_term_tax);
+  $("tax-room").textContent = rupees(t.tax_free_room);
+  if (!t.lots.length) { $("tax-line").textContent = "Nothing to tax yet."; $("tax-rows").innerHTML = ""; return; }
+  const soon = t.lots.filter((l) => l.term === "short" && l.gain > 0).sort((a, b) => a.long_term_on.localeCompare(b.long_term_on))[0];
+  $("tax-line").innerHTML = `Gains if you sold today: short-term <b>${rupees(t.short_term_gain)}</b>, long-term <b>${rupees(t.long_term_gain)}</b>.` +
+    (t.slab_gain ? ` Other funds (taxed at your income slab): ${rupees(t.slab_gain)}.` : "") +
+    (soon ? ` Waiting helps: your ${esc(soon.code)} shares bought on ${shortDate(soon.bought)} turn long-term on ${shortDate(soon.long_term_on)}.` : "");
+  const term = { short: "Short-term", long: "Long-term", slab: "Income slab" };
+  $("tax-rows").innerHTML = `<div class="h-row head"><span>Holding and date bought</span><span class="num">Gain</span><span class="num">Type</span><span class="num hide-sm">Held</span><span class="num hide-sm"></span></div>` +
+    t.lots.map((l) => `<div class="h-row"><span><span class="sym">${esc(l.kind === "stock" ? l.code : l.name)}</span><span class="nm">${inr.format(l.quantity)} bought ${shortDate(l.bought)} at Rs ${inr.format(l.cost)}</span></span>
+      <span class="num ${sign(l.gain)}">${l.gain >= 0 ? "+" : ""}${rupees(l.gain)}</span><span class="num">${term[l.term]}</span><span class="num hide-sm">${whole.format(l.days_held)} days</span><span class="num hide-sm"></span></div>`).join("");
+}
+
+async function loadJournal() {
+  const rows = await api("/api/journal");
+  $("journal-list").innerHTML = rows.length ? rows.map((e) => `<li><div class="j-item ${e.due ? "due" : ""}">
+      <span class="sym">${esc(e.code)}</span>${e.due ? `<span class="due-tag">time to review</span>` : e.reviewed ? `<span class="due-tag" style="color:var(--green)">reviewed</span>` : ""}
+      <p>${esc(e.note)}</p>${e.sell_if ? `<small>Sell if: ${esc(e.sell_if)}</small><br>` : ""}<small>Review on ${shortDate(e.review_on)}</small>
+      <div class="j-actions">${e.reviewed ? "" : `<button class="ghost small" data-jdone="${e.id}">Mark reviewed</button>`}<button class="link" data-jdel="${e.id}">Delete</button></div>
+    </div></li>`).join("") : `<li class="empty">No entries yet. Writing down why you buy is the cheapest way to avoid panic selling later.</li>`;
+}
+(() => {
+  const f = $("journal-form");
+  const d = new Date(); d.setDate(d.getDate() + 90);
+  f.review_on.value = d.toISOString().slice(0, 10);
+  f.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = $("journal-msg"); msg.className = "error"; msg.textContent = "";
+    try {
+      await api("/api/journal", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(f))) });
+      msg.className = "error ok"; msg.textContent = "Saved."; f.code.value = ""; f.note.value = ""; f.sell_if.value = "";
+      loadJournal();
+    } catch (err) { msg.textContent = err.message; }
+  });
+  $("journal-list").addEventListener("click", async (e) => {
+    const done = e.target.closest("[data-jdone]"), del = e.target.closest("[data-jdel]");
+    try {
+      if (done) { await api(`/api/journal/${done.dataset.jdone}/reviewed`, { method: "POST" }); loadJournal(); }
+      if (del && confirm("Delete this journal entry? This cannot be undone.")) { await api(`/api/journal/${del.dataset.jdel}`, { method: "DELETE" }); loadJournal(); }
+    } catch (err) { toast(err.message); }
+  });
+})();
 
 /* ---------------------------------------------------------------- compare */
 let compareItems = [];

@@ -77,6 +77,13 @@ CREATE TABLE IF NOT EXISTS transactions (
     price REAL NOT NULL CHECK (price > 0), note TEXT, created_at TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_tx_user ON transactions(username);
+
+CREATE TABLE IF NOT EXISTS journal (
+    id INTEGER PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL, code TEXT NOT NULL,
+    note TEXT NOT NULL, sell_if TEXT, review_on TEXT NOT NULL, reviewed INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_journal_user ON journal(username, review_on);
 """
 
 
@@ -88,4 +95,9 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
+    # Older databases: add the practice-money column to transactions.
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)")}
+    if "book" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN book TEXT NOT NULL DEFAULT 'real'")
+        conn.commit()
     return conn

@@ -62,3 +62,27 @@ def test_import_csv_all_or_nothing(conn):
     assert r["added"] == 0 and "line 3" in r["errors"][0]
     assert len(portfolio.summary(conn, "u")["holdings"]) == 2  # INFY not added
     assert "header" in portfolio.import_csv(conn, "u", "a,b\n1,2")["errors"][0]
+
+
+def test_paper_book_is_separate_from_real(conn):
+    portfolio.add(conn, "u", buy("TCS", 5, 3000))
+    assert portfolio.add(conn, "u", {**buy("TCS", 2, 3500), "book": "paper"}) is None
+    assert portfolio.summary(conn, "u")["holdings"][0]["quantity"] == 5
+    assert portfolio.summary(conn, "u", "paper")["holdings"][0]["quantity"] == 2
+    # cannot sell practice shares you do not hold in the practice book
+    assert "only 2 held" in portfolio.add(conn, "u", {**buy("TCS", 3, 4000, side="sell"), "book": "paper"})
+    assert "book must be" in portfolio.add(conn, "u", {**buy("TCS", 1, 1), "book": "fantasy"})
+
+
+def test_old_database_gets_book_column(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.execute("CREATE TABLE transactions (id INTEGER PRIMARY KEY, username TEXT NOT NULL, kind TEXT NOT NULL,"
+                " code TEXT NOT NULL, side TEXT NOT NULL, date TEXT NOT NULL, quantity REAL NOT NULL,"
+                " price REAL NOT NULL, note TEXT, created_at TEXT)")
+    old.execute("INSERT INTO transactions (username, kind, code, side, date, quantity, price) VALUES"
+                " ('u','stock','TCS','buy','2025-01-01',1,100)")
+    old.commit(); old.close()
+    c = db.connect(path)
+    assert c.execute("SELECT book FROM transactions").fetchone()[0] == "real"

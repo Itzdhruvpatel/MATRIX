@@ -54,6 +54,12 @@
 
       <p class="story" id="story"></p>
 
+      <section class="card mood" id="mood-card">
+        <h2>Market mood: <span id="mood-level">checking</span></h2>
+        <p class="mood-meaning" id="mood-meaning"></p>
+        <ul class="mood-reasons" id="mood-reasons"></ul>
+      </section>
+
       <section class="card">
         <h2>The last 20 trading days</h2>
         <p class="hint">Each bar is one day: how many of every 100 stocks rose. Above the dashed line, more rose than fell.</p>
@@ -113,13 +119,24 @@
         <div class="card"><h2>Highest rated</h2><ul id="top-rated" class="list"></ul></div>
         <div class="card"><h2>Lowest rated</h2><ul id="bottom-rated" class="list"></ul></div>
       </section>
+
+      <section class="card">
+        <h2>Did the score work?</h2>
+        <p class="hint">The Prediction Ledger. Each month Matrix scores every stock using only what was known that day, then checks how Strong and Weak stocks really did over the next month, against simply owning the Nifty. Bad months stay on the record.</p>
+        <p class="ledger-line" id="ledger-line"></p>
+        <div class="table-scroll"><table id="ledger-table" class="table"></table></div>
+      </section>
     </main>
 
     <!-- PORTFOLIO -->
     <main class="page" data-view="portfolio" hidden>
       <section class="note" id="pf-summary">
         <div class="note-body">
-        <p class="note-date">My portfolio is worth</p>
+        <div class="seg book-seg" role="radiogroup" aria-label="Which money">
+          <label><input type="radio" name="book" value="real" checked> Real money</label>
+          <label><input type="radio" name="book" value="paper"> Practice money</label>
+        </div>
+        <p class="note-date" id="pf-heading">My portfolio is worth</p>
         <h1 class="note-title money" id="pf-value">-</h1>
         <p id="pf-line" class="note-sub"></p>
         <div class="kpis wide">
@@ -172,6 +189,49 @@ fund,122639,buy,2025-06-02,120,81.5</pre>
           <p id="csv-msg" class="error" role="status"></p>
           <button type="submit" class="primary">Upload file</button>
         </form>
+      </section>
+
+      <section class="card">
+        <h2>What if the market moves?</h2>
+        <p class="hint">An estimate, based on how much each holding has moved with the Nifty over the past year. Real moves are never exactly like this.</p>
+        <div class="moves" id="moves">
+          <button class="ghost small" data-move="-0.3">Falls 30%</button>
+          <button class="ghost small" data-move="-0.2">Falls 20%</button>
+          <button class="ghost small" data-move="-0.1">Falls 10%</button>
+          <button class="ghost small" data-move="0.1">Rises 10%</button>
+          <button class="ghost small" data-move="0.2">Rises 20%</button>
+        </div>
+        <p class="whatif-line" id="whatif-line"></p>
+        <div id="whatif-rows" class="holdings"></div>
+      </section>
+
+      <section class="card real-only" id="tax-card">
+        <h2>Tax if you sold everything today</h2>
+        <p class="hint" id="tax-rules"></p>
+        <div class="kpis wide tax-kpis">
+          <div class="kpi"><span class="kpi-label">Short-term tax (held 1 year or less)</span><span class="kpi-value" id="tax-st">-</span></div>
+          <div class="kpi"><span class="kpi-label">Long-term tax (held over 1 year)</span><span class="kpi-value" id="tax-lt">-</span></div>
+          <div class="kpi"><span class="kpi-label">Tax-free long-term gain left this year</span><span class="kpi-value" id="tax-room">-</span></div>
+        </div>
+        <p class="tax-line" id="tax-line"></p>
+        <div id="tax-rows" class="holdings"></div>
+      </section>
+
+      <section class="grid two real-only">
+        <form id="journal-form" class="card form">
+          <h2>Why I bought it</h2>
+          <p class="hint tight">Write it down now. Matrix reminds you to check if the reason still holds.</p>
+          <label>Stock symbol or fund code <input name="code" required placeholder="Example: TCS"></label>
+          <label>My reason <textarea name="note" required rows="3" maxlength="2000" placeholder="Example: steady profits, low debt, I expect demand to grow"></textarea></label>
+          <label>I will sell if <input name="sell_if" maxlength="1000" placeholder="Example: profits fall two quarters in a row"></label>
+          <label>Remind me on <input name="review_on" type="date" required></label>
+          <p id="journal-msg" class="error" role="status"></p>
+          <button type="submit" class="primary">Save to journal</button>
+        </form>
+        <section class="card">
+          <h2>My journal</h2>
+          <ul id="journal-list" class="list"></ul>
+        </section>
       </section>
 
       <section class="card">

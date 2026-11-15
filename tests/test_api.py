@@ -161,3 +161,40 @@ def test_market_summary_has_daily_history(client):
     login(client)
     h = client.get("/api/market/summary").json()["history"]
     assert h == [{"date": "2026-11-13", "adv": 1, "dec": 0, "total": 1}]
+
+
+def test_practice_book_endpoints(client):
+    login(client)
+    tx = {"kind": "stock", "code": "RELIANCE", "side": "buy", "date": "2026-01-02", "quantity": 3, "price": 1200, "book": "paper"}
+    assert client.post("/api/portfolio/transactions", json=tx).status_code == 200
+    assert client.get("/api/portfolio").json()["holdings"] == []
+    assert client.get("/api/portfolio", params={"book": "paper"}).json()["holdings"][0]["quantity"] == 3
+    assert client.get("/api/portfolio", params={"book": "fantasy"}).status_code == 400
+
+
+def test_insight_endpoints(client):
+    login(client)
+    client.post("/api/portfolio/transactions", json={"kind": "stock", "code": "RELIANCE", "side": "buy", "date": "2026-01-02", "quantity": 10, "price": 1200})
+    m = client.get("/api/insights/mood").json()
+    assert "level" in m
+    s = client.get("/api/insights/scenario", params={"move": -0.2}).json()
+    assert s["holdings"][0]["beta_known"] is False  # not enough history in the test data
+    assert s["change"] == pytest.approx(-0.2 * s["value"])
+    assert client.get("/api/insights/scenario", params={"move": -2}).status_code == 400
+    t = client.get("/api/insights/tax").json()
+    assert t["short_term_gain"] == pytest.approx(10 * (1339.70 - 1200))
+    assert client.get("/api/ledger").json()["periods"] == []
+
+
+def test_journal_flow(client):
+    login(client)
+    bad = client.post("/api/journal", json={"code": "NOPE", "note": "x", "review_on": "2026-12-01"})
+    assert bad.status_code == 400
+    ok = client.post("/api/journal", json={"code": "reliance", "note": "Strong retail growth", "sell_if": "Debt doubles", "review_on": "2020-01-01"})
+    assert ok.status_code == 200
+    (e,) = client.get("/api/journal").json()
+    assert e["code"] == "RELIANCE" and e["due"] is True
+    assert client.post(f"/api/journal/{e['id']}/reviewed").status_code == 200
+    assert client.get("/api/journal").json()[0]["due"] is False
+    assert client.delete(f"/api/journal/{e['id']}").status_code == 200
+    assert client.get("/api/journal").json() == []
