@@ -36,7 +36,7 @@ $("login-form").addEventListener("submit", async (e) => {
 });
 $("logout").addEventListener("click", async () => { await api("/api/logout", { method: "POST" }); showLogin(); });
 
-const loaders = { today: loadToday, ratings: loadRatings, portfolio: loadPortfolio, compare: loadCompare };
+const loaders = { today: loadToday, ratings: loadRatings, portfolio: loadPortfolio, alerts: loadAlerts, compare: loadCompare };
 function switchTab(tab) {
   if (!loaders[tab]) tab = "today";
   document.querySelectorAll("[data-view]").forEach((v) => (v.hidden = v.dataset.view !== tab));
@@ -160,6 +160,31 @@ $("csv-form").addEventListener("submit", async (e) => {
   } catch (err) { msg.textContent = err.message; }
 });
 
+/* ---------------------------------------------------------------- alerts */
+const LEVEL_WORD = { danger: "Danger", warning: "Warning", watch: "Watch", info: "Info" };
+function alertItem(a, showCompany = true) {
+  const link = a.link && a.link.startsWith("https://") ? ` <a href="${esc(a.link)}" target="_blank" rel="noopener noreferrer">Open the filing</a>` : "";
+  const who = showCompany ? `<button class="who" data-symbol="${esc(a.symbol)}">${esc(a.symbol)}${a.name ? ` <span class="muted">${esc(a.name)}</span>` : ""}${a.owned ? " (you own this)" : ""}</button>` : "";
+  return `<li><div class="alert ${esc(a.level)}"><span class="tag">${LEVEL_WORD[a.level]}</span><div class="grow">
+    ${who}<h3>${esc(a.title)}</h3><p>${esc(a.detail ?? "")}</p>
+    <small>${esc(a.source ?? "")}${a.date ? `, ${shortDate(a.date)}` : ""}${link}</small></div></div></li>`;
+}
+async function loadAlerts() {
+  const a = await api("/api/alerts");
+  const serious = a.mine.filter((m) => m.level === "danger" || m.level === "warning").length;
+  $("al-title").textContent = !a.tracking ? "Alerts" : serious ? `${serious} thing${serious > 1 ? "s" : ""} to look at.` : "All clear for your stocks.";
+  $("al-sub").textContent = !a.tracking
+    ? "You are not following any stocks yet. Add what you own in My portfolio, or follow a stock, and Matrix will warn you here."
+    : `Matrix is watching ${a.tracking} stock${a.tracking > 1 ? "s" : ""} for you, using prices and official company filings.`;
+  $("al-watch").innerHTML = a.watchlist.map((w) => `<span class="chip">${esc(w.kind === "stock" ? w.code : w.name)}<button data-unwatch="${esc(w.kind)}:${esc(w.code)}" aria-label="Stop following ${esc(w.name)}">Unfollow</button></span>`).join("");
+  $("al-mine").innerHTML = a.mine.map((m) => alertItem(m)).join("") || `<li class="empty">${a.tracking ? "No alerts for your stocks right now." : "Nothing to show yet."}</li>`;
+  $("al-market").innerHTML = a.market.map((m) => alertItem(m)).join("") || `<li class="empty">No serious alerts in the market right now.</li>`;
+}
+async function setWatch(kind, code, on) {
+  if (on) await api("/api/watchlist", { method: "POST", body: JSON.stringify({ kind, code }) });
+  else await api(`/api/watchlist/${kind}/${encodeURIComponent(code)}`, { method: "DELETE" });
+}
+
 /* ---------------------------------------------------------------- compare */
 let compareItems = [];
 try { compareItems = JSON.parse(localStorage.getItem("matrix.compare") || "[]"); } catch { compareItems = []; }
@@ -228,6 +253,8 @@ document.addEventListener("click", async (e) => {
   const sym = e.target.closest("[data-symbol]"); if (sym) return openStock(sym.dataset.symbol);
   const fund = e.target.closest("[data-fund]"); if (fund) return openFund(fund.dataset.fund);
   const open = e.target.closest("[data-open]"); if (open) { const [k, c] = open.dataset.open.split(":"); return k === "stock" ? openStock(c) : openFund(c); }
+  const uw = e.target.closest("[data-unwatch]");
+  if (uw) { const [k, c] = uw.dataset.unwatch.split(":"); await setWatch(k, c, false); toast("Stopped following"); return loadAlerts(); }
   const un = e.target.closest("[data-uncompare]"); if (un) { compareItems.splice(+un.dataset.uncompare, 1); saveCompare(); loadCompare(); }
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); $("search-results").hidden = true; } });
@@ -239,6 +266,12 @@ function closeDrawer() { $("drawer").classList.remove("open"); $("drawer").setAt
 $("drawer-close").addEventListener("click", closeDrawer);
 $("scrim").addEventListener("click", closeDrawer);
 $("drawer-compare").addEventListener("click", () => drawerItem && addCompare(drawerItem));
+function paintWatch(on) { const b = $("drawer-watch"); b.hidden = false; b.dataset.on = on ? "1" : ""; b.textContent = on ? "Following" : "Follow"; b.classList.toggle("following", on); }
+$("drawer-watch").addEventListener("click", async () => {
+  const [kind, code] = drawerItem.split(":"), on = !$("drawer-watch").dataset.on;
+  try { await setWatch(kind, code, on); paintWatch(on); toast(on ? "Following. Alerts will show in the Alerts tab." : "Stopped following"); }
+  catch (err) { toast(err.message); }
+});
 function chartOptions() {
   return {
     autoSize: true,
@@ -255,6 +288,7 @@ function resetDrawer(title) {
   $("drawer-title").textContent = title;
   for (const id of ["drawer-kicker", "drawer-price", "drawer-score", "drawer-simple", "drawer-stats", "drawer-reasons", "drawer-flags", "drawer-source"]) $(id).innerHTML = "";
   if (chart) { chart.remove(); chart = null; }
+  $("drawer-watch").hidden = true;
   openDrawer();
 }
 
@@ -290,8 +324,8 @@ async function openStock(symbol) {
       sc.reasons.map((r) => `<p class="reason ${r.kind}">${esc(r.text[0].toUpperCase() + r.text.slice(1))}</p>`).join("") +
       `<p class="hint">Each bar compares this stock with ${whole.format(sc.universe)} others. 100 means best of all.</p>`
     : `<p class="hint">No Matrix Score yet. A stock needs about 6 months of trading and at least Rs 1 crore traded on a normal day.</p>`;
-  $("drawer-flags").innerHTML = d.flags.filter((f) => f.severity === "flagged").slice(0, 3).map((f) =>
-    `<div class="flag-box"><b>Big move on ${shortDate(f.date)}:</b> ${esc(f.reason)}. Check the news or company announcements to know why.</div>`).join("");
+  paintWatch(d.watched);
+  $("drawer-flags").innerHTML = d.alerts.length ? `<h3>Alerts for this stock</h3><ul class="list">${d.alerts.map((x) => alertItem(x, false)).join("")}</ul>` : "";
   $("drawer-source").textContent = `Source: NSE end-of-day prices, adjusted for splits and bonuses. Updated ${d.info.fetched_at.replace("T", " ").slice(0, 16)}. Not live.`;
 }
 

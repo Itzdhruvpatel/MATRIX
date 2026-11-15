@@ -12,12 +12,13 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from matrix import analytics, auth, db, pipeline, portfolio, score
+from matrix import analytics, auth, db, pipeline, portfolio, radar, score
 
 ROOT = Path(__file__).resolve().parent.parent
 COOKIE = "matrix_session"
 MIN_TRADED_VALUE = 1e8  # Rs 10 crore: ignore thinly traded stocks in gainer/loser lists
 STALE_DAYS = 4
+LEVEL_ORDER = "CASE level WHEN 'danger' THEN 0 WHEN 'warning' THEN 1 WHEN 'watch' THEN 2 ELSE 3 END"
 MAX_FAILS, LOCK_SECONDS = 5, 300
 
 
@@ -43,6 +44,7 @@ class Login(BaseModel):
 
 def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
     app = FastAPI(title="Matrix", docs_url=None, redoc_url=None)
+    app.state.conn = conn
     lock = threading.Lock()
     fails: dict[str, list[float]] = defaultdict(list)
 
@@ -138,8 +140,12 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                 "score": sc or None, "history": hist}
 
     @app.get("/api/stocks/{symbol}")
-    def stock_detail(symbol: str, _: str = Depends(user)):
+    def stock_detail(symbol: str, name: str = Depends(user)):
         d = stock_payload(symbol.upper())
+        d["alerts"] = q(f"SELECT date, rule, level, title, detail, link, source FROM alerts"
+                        f" WHERE symbol=? ORDER BY {LEVEL_ORDER}, date DESC LIMIT 12", (symbol.upper(),))
+        d["watched"] = bool(q("SELECT 1 FROM watchlist WHERE username=? AND kind='stock' AND code=?",
+                              (name, symbol.upper())))
         d["flags"] = q("SELECT date, severity, reason FROM data_issues WHERE key=?"
                        " AND source='nse_bhavcopy' ORDER BY date DESC", (symbol.upper(),))
         return d
@@ -268,6 +274,56 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
             raise HTTPException(400, "; ".join(r["errors"]))
         return r
 
+    # ---------------------------------------------------------------- alerts + watchlist
+    class Watch(BaseModel):
+        kind: str
+        code: str
+
+    @app.get("/api/alerts")
+    def alerts(name: str = Depends(user)):
+        with lock:
+            held = {k[1] for k, v in portfolio.holdings_qty(conn, name).items()
+                    if k[0] == "stock" and v > 1e-9}
+        watch = q("SELECT w.kind, w.code, COALESCE((SELECT name FROM stock_prices WHERE symbol=w.code"
+                  " ORDER BY date DESC LIMIT 1), (SELECT name FROM funds WHERE scheme_code=w.code),"
+                  " w.code) AS name FROM watchlist w WHERE w.username=? ORDER BY w.added_at DESC", (name,))
+        mine_syms = sorted(held | {w["code"] for w in watch if w["kind"] == "stock"})
+        cols = ("a.symbol, a.date, a.rule, a.level, a.title, a.detail, a.link, a.source,"
+                " (SELECT name FROM stock_prices WHERE symbol=a.symbol ORDER BY date DESC LIMIT 1) AS name")
+        mine = []
+        if mine_syms:
+            marks = ",".join("?" * len(mine_syms))
+            mine = q(f"SELECT {cols} FROM alerts a WHERE a.symbol IN ({marks})"
+                     f" ORDER BY {LEVEL_ORDER}, a.date DESC", mine_syms)
+            for m in mine:
+                m["owned"] = m["symbol"] in held
+        # Market-wide: the serious ones only, skipping the long surveillance list.
+        market = q(f"SELECT {cols} FROM alerts a WHERE a.level IN ('danger', 'warning')"
+                   f" AND a.rule NOT IN ('surveillance', 'fall_month')"
+                   f" ORDER BY {LEVEL_ORDER}, a.date DESC LIMIT 40")
+        counts = {r["level"]: r["n"] for r in q("SELECT level, COUNT(*) n FROM alerts GROUP BY level")}
+        return {"mine": mine, "tracking": len(mine_syms), "market": market, "counts": counts,
+                "watchlist": watch}
+
+    @app.post("/api/watchlist")
+    def watch_add(w: Watch, name: str = Depends(user)):
+        code = w.code.strip().upper() if w.kind == "stock" else w.code.strip()
+        with lock:
+            if w.kind not in ("stock", "fund") or portfolio.latest_price(conn, w.kind, code) is None:
+                raise HTTPException(400, f"Unknown {w.kind} '{w.code}'")
+            conn.execute("INSERT OR IGNORE INTO watchlist (username, kind, code, added_at)"
+                         " VALUES (?,?,?,datetime('now'))", (name, w.kind, code))
+            conn.commit()
+        return {"ok": True}
+
+    @app.delete("/api/watchlist/{kind}/{code}")
+    def watch_remove(kind: str, code: str, name: str = Depends(user)):
+        with lock:
+            conn.execute("DELETE FROM watchlist WHERE username=? AND kind=? AND code=?",
+                         (name, kind, code.upper() if kind == "stock" else code))
+            conn.commit()
+        return {"ok": True}
+
     # ---------------------------------------------------------------- health
     @app.get("/api/health")
     def health(_: str = Depends(user)):
@@ -300,6 +356,9 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                             " AND status IN ('ok','no_data')", (today.isoformat(),)).fetchone():
                         if pipeline.load_stocks(c, today)["status"] == "ok":
                             score.compute(c)
+                    # Feeds only hold the newest filings, so read them every cycle.
+                    if pipeline.load_feeds(c)["rows"]:
+                        radar.compute(c)
                     if now.hour >= 23 and not c.execute(
                             "SELECT 1 FROM pipeline_runs WHERE source='amfi_navall' AND"
                             " status='ok' AND started_at LIKE ?", (f"{today}%",)).fetchone():

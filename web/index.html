@@ -30,6 +30,7 @@
         <button data-tab="today" aria-current="page">Market today</button>
         <button data-tab="ratings">Ratings</button>
         <button data-tab="portfolio">My portfolio</button>
+        <button data-tab="alerts">Alerts</button>
         <button data-tab="compare">Compare</button>
       </nav>
       <div class="search">
@@ -171,6 +172,33 @@ fund,122639,buy,2025-06-02,120,81.5</pre>
       </section>
     </main>
 
+    <!-- ALERTS -->
+    <main class="page" data-view="alerts" hidden>
+      <section class="note">
+        <div class="note-body">
+          <h1 class="note-title" id="al-title">Alerts</h1>
+          <p class="note-sub" id="al-sub">Matrix watches prices and official company filings every day and warns you in plain words.</p>
+          <div class="scale">
+            <span class="lvl s1">Danger<b>Serious. Look now.</b></span>
+            <span class="lvl s2">Warning<b>Risk is building.</b></span>
+            <span class="lvl s3">Watch<b>An early sign.</b></span>
+            <span class="lvl s-info">Info<b>Good to know.</b></span>
+          </div>
+        </div>
+      </section>
+      <section class="card">
+        <h2>For your stocks</h2>
+        <p class="hint">Stocks you own or follow. To follow a stock, search for it, open it, and press "Follow".</p>
+        <div id="al-watch" class="chips"></div>
+        <ul id="al-mine" class="list"></ul>
+      </section>
+      <section class="card">
+        <h2>Serious alerts across the market</h2>
+        <p class="hint">Danger and Warning alerts from all companies, newest first. Useful before you buy something new.</p>
+        <ul id="al-market" class="list"></ul>
+      </section>
+    </main>
+
     <!-- COMPARE -->
     <main class="page" data-view="compare" hidden>
       <section class="note">
@@ -192,6 +220,7 @@ fund,122639,buy,2025-06-02,120,81.5</pre>
     <aside id="drawer" class="drawer" aria-hidden="true">
       <div class="drawer-inner" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
         <div class="drawer-actions">
+          <button id="drawer-watch" class="ghost small" hidden>Follow</button>
           <button id="drawer-compare" class="ghost small">+ Add to compare</button>
           <button id="drawer-close" class="ghost small" aria-label="Close">Close</button>
         </div>

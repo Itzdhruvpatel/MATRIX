@@ -128,3 +128,24 @@ def test_compare_uses_split_adjusted_prices(client):
     login(client)
     c = client.get("/api/compare", params={"items": "stock:RELIANCE"}).json()
     assert c[0]["history"][-1]["value"] == pytest.approx(1339.70)
+
+
+def test_watchlist_and_alerts(client):
+    from matrix import radar
+    login(client)
+    assert client.post("/api/watchlist", json={"kind": "stock", "code": "nope"}).status_code == 400
+    assert client.post("/api/watchlist", json={"kind": "stock", "code": "reliance"}).status_code == 200
+    conn = client.app.state.conn
+    conn.execute("INSERT INTO alerts (symbol, date, rule, level, title, detail) VALUES"
+                 " ('RELIANCE', '2026-11-13', 'pledge', 'warning', 'Promoters pledged shares', 'why'),"
+                 " ('RELIANCE', '2026-11-13', 'deal_buy', 'info', 'Large deal', 'why'),"
+                 " ('OTHER', '2026-11-13', 'auditor_exit', 'danger', 'Auditor resigned', 'why')")
+    conn.commit()
+    a = client.get("/api/alerts").json()
+    assert [m["rule"] for m in a["mine"]] == ["pledge", "deal_buy"]   # worst first, only watched
+    assert a["tracking"] == 1 and a["watchlist"][0]["code"] == "RELIANCE"
+    assert [m["symbol"] for m in a["market"]] == ["OTHER", "RELIANCE"]
+    d = client.get("/api/stocks/RELIANCE").json()
+    assert d["watched"] is True and d["alerts"][0]["level"] == "warning"
+    assert client.delete("/api/watchlist/stock/RELIANCE").status_code == 200
+    assert client.get("/api/alerts").json()["mine"] == []

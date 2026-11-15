@@ -12,18 +12,18 @@ Status as of 14 November 2026. Full plan: `docs/Matrix-Design.pdf`.
 - Matrix Score v1 for about 1,500 stocks (price behaviour only)
 - Portfolio: add or import buys and sells, profit, yearly growth (XIRR), over-10% warnings
 - Compare up to 4 stocks or funds on one chart
+- Danger Radar v1: price rules, official NSE filings (announcements, pledges, insider trades), big deals, follow list, Alerts screen
 
 Effort key: S = a day or less, M = a few days, L = a week or more.
 
 ## 2. Still to build
 
 ### Phase 2: Danger Radar, news and company filings
-- Company announcements from NSE/BSE (results, auditor exits, rating changes). Source: NSE/BSE filings. M
-- Promoter and insider trade disclosures, pledged shares. Source: NSE/BSE disclosures. M
-- Bulk and block deals, FII/DII money flows. Source: NSE. S
-- Credit rating changes. Source: CRISIL, ICRA, CARE press releases. M
+- FII/DII money flows. Source: NSE. S
+- Insider trade details (who, how many shares, buy or sell) by reading each filing's data file. M
+- Credit rating changes direct from agencies. Source: CRISIL, ICRA, CARE press releases. M
 - News reader: tag each article to companies, mark it good or bad news. Source: news RSS feeds + Claude API. L
-- Danger Radar rules (about 30, from the design doc) with 4 levels: Info, Watch, Warning, Danger. Source: all of the above. L
+- Remaining Danger Radar rules that need company financials (debt, cash flow, receivables) and fund data (manager change, underperformance). L
 - Alerts on Telegram or email when something you own gets a Warning or Danger flag. S
 - Company financials (profit, debt, cash flow, 10 years) so the score covers business quality, not just price. Source: needs a decision (see section 3). L
 

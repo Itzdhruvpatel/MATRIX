@@ -135,6 +135,19 @@ input:focus { border-color: var(--brand); outline: none; box-shadow: 0 0 0 4px v
 .explain ul { padding-left: 18px; margin: 10px 0; }
 .explain li { margin: 5px 0; }
 
+/* Alerts */
+.s-info { background: var(--blue); }
+.alert { display: flex; gap: 14px; align-items: flex-start; background: var(--bg); border-radius: var(--radius-md); padding: 14px 16px; border-left: 6px solid var(--c); }
+.alert.danger { --c: var(--s1); } .alert.warning { --c: var(--s2); } .alert.watch { --c: var(--s3); } .alert.info { --c: var(--blue); }
+.alert .tag { flex: none; background: var(--c); color: #fff; font-weight: 800; font-size: 0.78rem; padding: 4px 10px; border-radius: 999px; min-width: 72px; text-align: center; }
+.alert h3 { font-size: 1.02rem; }
+.alert p { margin: 4px 0; color: var(--ink-2); font-size: 0.95rem; }
+.alert small { color: var(--muted); font-weight: 600; }
+.alert a { color: var(--brand-dark); font-weight: 800; }
+.alert .who { background: none; padding: 0; color: var(--brand-dark); font-weight: 800; border-radius: 0; text-align: left; }
+.alert .who:hover { text-decoration: underline; }
+button.following { background: var(--brand-soft); color: var(--brand-dark); border-color: var(--brand); }
+
 /* Portfolio */
 .alloc { display: grid; gap: 8px; background: var(--surface); border-radius: 18px; padding: 16px 20px; box-shadow: var(--shadow); }
 .alloc:empty { display: none; }

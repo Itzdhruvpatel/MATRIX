@@ -20,6 +20,13 @@ This is a research tool. It does not give investment advice, place trades, or gu
 - Value, gain, booked gains, and true yearly return (XIRR) per holding and overall
 - Warns when one stock is over 10% of the portfolio
 
+**Alerts (Danger Radar)**
+- Follow any stock; alerts for stocks you own or follow appear in the Alerts tab
+- Price rules: exchange surveillance, falls over 20% in a month, one-day moves over 20%, pump-and-dump patterns, near a one-year low
+- Official NSE filings: auditor resignations, defaults, insolvency, fraud or regulator action, rating downgrades, top executive exits, promoter pledges, insider trades
+- Large bulk and block deals
+- Every alert says what happened, why it matters, and links to the filing
+
 **Compare**
 - Up to 4 stocks or funds on one chart, all starting at 100, with returns and risk side by side
 
@@ -58,11 +65,12 @@ python -m pytest
 ## Layout
 
 ```
-matrix/sources/   NSE and AMFI downloaders and parsers
+matrix/sources/   NSE prices, NSE feeds, AMFI and fund history loaders
 matrix/validate.py  data quality rules
 matrix/analytics.py returns, risk, XIRR, split adjustment
 matrix/score.py   Matrix Score
 matrix/portfolio.py holdings and returns
+matrix/radar.py   Danger Radar rules and alerts
 matrix/pipeline.py  fetch, validate, store
 matrix/db.py      SQLite schema
 matrix/auth.py    passwords and sessions

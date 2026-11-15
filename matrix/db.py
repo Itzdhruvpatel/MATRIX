@@ -38,6 +38,31 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
 
 CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL);
 
+CREATE TABLE IF NOT EXISTS announcements (
+    id TEXT PRIMARY KEY, feed TEXT NOT NULL, company TEXT, symbol TEXT, subject TEXT,
+    description TEXT, link TEXT, published_at TEXT, source TEXT NOT NULL, fetched_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_ann_symbol ON announcements(symbol, published_at);
+
+CREATE TABLE IF NOT EXISTS deals (
+    date TEXT NOT NULL, symbol TEXT NOT NULL, client TEXT NOT NULL, side TEXT NOT NULL,
+    quantity INTEGER NOT NULL, price REAL NOT NULL, kind TEXT NOT NULL,
+    source TEXT NOT NULL, fetched_at TEXT NOT NULL,
+    PRIMARY KEY (date, symbol, client, side, quantity, price, kind)
+);
+
+CREATE TABLE IF NOT EXISTS alerts (
+    id INTEGER PRIMARY KEY, symbol TEXT NOT NULL, date TEXT NOT NULL, rule TEXT NOT NULL,
+    level TEXT NOT NULL CHECK (level IN ('info', 'watch', 'warning', 'danger')),
+    title TEXT NOT NULL, detail TEXT, link TEXT, source TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_alert_symbol ON alerts(symbol);
+
+CREATE TABLE IF NOT EXISTS watchlist (
+    username TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('stock', 'fund')),
+    code TEXT NOT NULL, added_at TEXT, PRIMARY KEY (username, kind, code)
+);
+
 CREATE TABLE IF NOT EXISTS stock_scores (
     symbol TEXT NOT NULL, date TEXT NOT NULL, score INTEGER,
     components TEXT, metrics TEXT, reasons TEXT, universe INTEGER,

@@ -4,7 +4,9 @@ import sqlite3
 from datetime import date, datetime, timedelta, timezone
 
 from matrix import db, validate
-from matrix.sources import amfi, mfapi, nse
+import hashlib
+
+from matrix.sources import amfi, mfapi, nse, nse_feeds
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -120,6 +122,49 @@ def load_fund_history(conn: sqlite3.Connection, code: str, fetch=None) -> dict:
     return _log_run(conn, mfapi.SOURCE, code, "ok", len(rows), issues, None, started)
 
 
+def load_feeds(conn: sqlite3.Connection, fetch_rss=None, fetch_deals=None) -> dict:
+    """Announcements, insider trades, pledges, corporate actions and big deals.
+
+    Feeds only hold the latest items, so this runs often and keeps what it has seen.
+    One feed failing does not stop the others.
+    """
+    started, fetched = now(), now()
+    fetch_rss, fetch_deals = fetch_rss or nse_feeds.fetch_rss, fetch_deals or nse_feeds.fetch_deals
+    symbols = {nse_feeds.name_key(r["name"]): r["symbol"] for r in conn.execute(
+        "SELECT symbol, name FROM stock_prices WHERE date=(SELECT MAX(date) FROM stock_prices)"
+        " AND name IS NOT NULL")}
+    rows, failed = 0, []
+    for feed in nse_feeds.FEEDS:
+        try:
+            items = nse_feeds.parse_rss(fetch_rss(feed))
+        except Exception as e:
+            failed.append(f"{feed}: {e!r}")
+            continue
+        for it in items:
+            key = hashlib.sha1(f"{feed}|{it['title']}|{it['link']}|{it['published_at']}".encode()).hexdigest()
+            rows += conn.execute(
+                "INSERT OR IGNORE INTO announcements (id, feed, company, symbol, subject, description,"
+                " link, published_at, source, fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (key, feed, it["company"], nse_feeds.match_symbol(it["company"], symbols),
+                 it["subject"], it["description"], it["link"], it["published_at"],
+                 nse_feeds.SOURCE, fetched)).rowcount
+    for kind in nse_feeds.DEAL_KINDS:
+        try:
+            deals = nse_feeds.parse_deals(fetch_deals(kind))
+        except Exception as e:
+            failed.append(f"{kind} deals: {e!r}")
+            continue
+        for d in deals:
+            rows += conn.execute(
+                "INSERT OR IGNORE INTO deals (date, symbol, client, side, quantity, price, kind,"
+                " source, fetched_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (d["date"], d["symbol"], d["client"], d["side"], d["quantity"], d["price"], kind,
+                 nse_feeds.SOURCE, fetched)).rowcount
+    status = "error" if len(failed) == len(nse_feeds.FEEDS) + len(nse_feeds.DEAL_KINDS) else "ok"
+    return _log_run(conn, nse_feeds.SOURCE, today_ist().isoformat(), status, rows, len(failed),
+                    "; ".join(failed) or None, started)
+
+
 def run(conn: sqlite3.Connection, days: int = 1) -> list[dict]:
     """Load the last `days` trading days of stocks (skipping holidays) plus today's fund NAVs."""
     results, day, loaded, tries = [], today_ist(), 0, 0
@@ -141,5 +186,7 @@ if __name__ == "__main__":
     conn = db.connect()
     for r in run(conn, args.days):
         print(r)
-    from matrix import score
+    from matrix import radar, score
     print(f"Scored {score.compute(conn)} stocks")
+    print("feeds:", load_feeds(conn))
+    print(f"Radar raised {radar.compute(conn)} alerts")
