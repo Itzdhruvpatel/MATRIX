@@ -48,6 +48,57 @@ function switchTab(tab) {
 document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
 window.addEventListener("hashchange", () => { if (!$("app-view").hidden) switchTab(location.hash.slice(1)); });
 
+setTimeout(() => document.body.classList.add("settled"), 2500);
+
+/* ---------------------------------------------------------------- light burst */
+// A star of light rays at the top of the page that slowly turns and shimmers.
+(function burst() {
+  const cv = $("burst"), ctx = cv.getContext("2d");
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let w, h, dpr, rays = [];
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  function size() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    w = cv.clientWidth; h = cv.clientHeight;
+    cv.width = w * dpr; cv.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    rays = Array.from({ length: 220 }, () => ({
+      a: rnd(0, Math.PI * 2), len: rnd(0.15, 1) ** 2 * Math.max(w, h) * 0.55,
+      wid: rnd(0.5, 1.8), alpha: rnd(0.12, 0.65), speed: rnd(0.4, 1.6), phase: rnd(0, 6.28),
+    }));
+  }
+  function draw(t) {
+    const top = document.querySelector(".topbar")?.offsetHeight || 60;
+    const narrow = w < 720;  // on phones keep the bright core off the text
+    const cx = w * (narrow ? 0.9 : 0.62), cy = top + (narrow ? 10 : 70), spin = t * 0.00002;
+    ctx.clearRect(0, 0, w, h);
+    ctx.globalCompositeOperation = "lighter";
+    for (const r of rays) {
+      const a = r.a + spin, flick = 0.65 + 0.35 * Math.sin(t * 0.001 * r.speed + r.phase);
+      const x = cx + Math.cos(a) * r.len, y = cy + Math.sin(a) * r.len * 0.8;
+      const g = ctx.createLinearGradient(cx, cy, x, y);
+      g.addColorStop(0, `rgba(220,232,255,${r.alpha * flick})`);
+      g.addColorStop(1, "rgba(120,150,255,0)");
+      ctx.strokeStyle = g; ctx.lineWidth = r.wid;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke();
+    }
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, 140);
+    core.addColorStop(0, "rgba(255,255,255,0.95)");
+    core.addColorStop(0.08, "rgba(200,215,255,0.55)");
+    core.addColorStop(1, "rgba(80,110,255,0)");
+    ctx.fillStyle = core; ctx.beginPath(); ctx.arc(cx, cy, 140, 0, Math.PI * 2); ctx.fill();
+    ctx.globalCompositeOperation = "source-over";
+  }
+  let last = 0;
+  function loop(t) {
+    if (!document.hidden && t - last > 33) { draw(t); last = t; }  // about 30 frames a second
+    requestAnimationFrame(loop);
+  }
+  size();
+  addEventListener("resize", () => { size(); draw(performance.now()); });
+  if (still) draw(0); else requestAnimationFrame(loop);
+})();
+
 /* ---------------------------------------------------------------- shared */
 function scoreLevel(s) {
   return s >= 80 ? ["Strong", "--s5"] : s >= 60 ? ["Good", "--s4"] : s >= 40 ? ["Average", "--s3"] : s >= 20 ? ["Weak", "--s2"] : ["Very weak", "--s1"];
