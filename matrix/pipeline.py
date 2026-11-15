@@ -61,10 +61,14 @@ def load_stocks(conn: sqlite3.Connection, day: date, fetch=nse.download) -> dict
         good.append({**r, "source": nse.SOURCE, "fetched_at": fetched})
 
     conn.executemany(
-        "INSERT OR REPLACE INTO stock_prices (symbol, date, isin, name, series, open, high, low,"
+        "INSERT INTO stock_prices (symbol, date, isin, name, series, open, high, low,"
         " close, prev_close, volume, value, trades, source, fetched_at) VALUES (:symbol, :date,"
         " :isin, :name, :series, :open, :high, :low, :close, :prev_close, :volume, :value,"
-        " :trades, :source, :fetched_at)", good)
+        " :trades, :source, :fetched_at) ON CONFLICT (symbol, date) DO UPDATE SET"
+        " isin=excluded.isin, name=excluded.name, series=excluded.series, open=excluded.open,"
+        " high=excluded.high, low=excluded.low, close=excluded.close, prev_close=excluded.prev_close,"
+        " volume=excluded.volume, value=excluded.value, trades=excluded.trades,"
+        " source=excluded.source, fetched_at=excluded.fetched_at", good)
     return _log_run(conn, nse.SOURCE, day.isoformat(), "ok", len(good), issues, None, started)
 
 
@@ -86,12 +90,17 @@ def load_funds(conn: sqlite3.Connection, fetch=amfi.download) -> dict:
         good.append({**r, "source": amfi.SOURCE, "fetched_at": fetched})
 
     conn.executemany(
-        "INSERT OR REPLACE INTO funds (scheme_code, name, amc, category, plan, option,"
+        "INSERT INTO funds (scheme_code, name, amc, category, plan, option,"
         " isin_growth, isin_reinv, source, fetched_at) VALUES (:scheme_code, :name, :amc,"
-        " :category, :plan, :option, :isin_growth, :isin_reinv, :source, :fetched_at)", good)
+        " :category, :plan, :option, :isin_growth, :isin_reinv, :source, :fetched_at)"
+        " ON CONFLICT (scheme_code) DO UPDATE SET name=excluded.name, amc=excluded.amc,"
+        " category=excluded.category, plan=excluded.plan, option=excluded.option,"
+        " isin_growth=excluded.isin_growth, isin_reinv=excluded.isin_reinv,"
+        " source=excluded.source, fetched_at=excluded.fetched_at", good)
     conn.executemany(
-        "INSERT OR REPLACE INTO fund_navs (scheme_code, date, nav, source, fetched_at)"
-        " VALUES (:scheme_code, :date, :nav, :source, :fetched_at)", good)
+        "INSERT INTO fund_navs (scheme_code, date, nav, source, fetched_at)"
+        " VALUES (:scheme_code, :date, :nav, :source, :fetched_at) ON CONFLICT (scheme_code, date)"
+        " DO UPDATE SET nav=excluded.nav, source=excluded.source, fetched_at=excluded.fetched_at", good)
     nav_day = good[0]["date"] if good else today_ist().isoformat()
     return _log_run(conn, amfi.SOURCE, nav_day, "ok", len(good), issues, None, started)
 
@@ -117,8 +126,8 @@ def load_fund_history(conn: sqlite3.Connection, code: str, fetch=None) -> dict:
             issues += 1
     fetched = now()
     conn.executemany(
-        "INSERT OR IGNORE INTO fund_navs (scheme_code, date, nav, source, fetched_at)"
-        " VALUES (?,?,?,?,?)", [(code, r["date"], r["nav"], mfapi.SOURCE, fetched) for r in rows])
+        "INSERT INTO fund_navs (scheme_code, date, nav, source, fetched_at)"
+        " VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING", [(code, r["date"], r["nav"], mfapi.SOURCE, fetched) for r in rows])
     return _log_run(conn, mfapi.SOURCE, code, "ok", len(rows), issues, None, started)
 
 
@@ -143,8 +152,9 @@ def load_feeds(conn: sqlite3.Connection, fetch_rss=None, fetch_deals=None) -> di
         for it in items:
             key = hashlib.sha1(f"{feed}|{it['title']}|{it['link']}|{it['published_at']}".encode()).hexdigest()
             rows += conn.execute(
-                "INSERT OR IGNORE INTO announcements (id, feed, company, symbol, subject, description,"
-                " link, published_at, source, fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO announcements (id, feed, company, symbol, subject, description,"
+                " link, published_at, source, fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?)"
+                " ON CONFLICT DO NOTHING",
                 (key, feed, it["company"], nse_feeds.match_symbol(it["company"], symbols),
                  it["subject"], it["description"], it["link"], it["published_at"],
                  nse_feeds.SOURCE, fetched)).rowcount
@@ -156,8 +166,8 @@ def load_feeds(conn: sqlite3.Connection, fetch_rss=None, fetch_deals=None) -> di
             continue
         for d in deals:
             rows += conn.execute(
-                "INSERT OR IGNORE INTO deals (date, symbol, client, side, quantity, price, kind,"
-                " source, fetched_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO deals (date, symbol, client, side, quantity, price, kind,"
+                " source, fetched_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
                 (d["date"], d["symbol"], d["client"], d["side"], d["quantity"], d["price"], kind,
                  nse_feeds.SOURCE, fetched)).rowcount
     status = "error" if len(failed) == len(nse_feeds.FEEDS) + len(nse_feeds.DEAL_KINDS) else "ok"

@@ -28,10 +28,28 @@ function toast(msg) {
 
 /* ---------------------------------------------------------------- auth + tabs */
 function showLogin() { $("app-view").hidden = true; $("login-view").hidden = false; }
-function showApp() { $("login-view").hidden = true; $("app-view").hidden = false; switchTab(location.hash.slice(1) || "today"); }
+let me = { ratings: true };
+async function showApp() {
+  me = await api("/api/me");
+  // Ratings are private to the site owner when the site is shared.
+  document.querySelector('[data-tab="ratings"]').hidden = !me.ratings;
+  $("login-view").hidden = true; $("app-view").hidden = false;
+  const want = location.hash.slice(1) || "today";
+  switchTab(want === "ratings" && !me.ratings ? "today" : want);
+}
+let signupMode = false;
+api("/api/config").then((c) => { $("signup-switch").hidden = !c.signup; }).catch(() => {});
+$("mode-btn").addEventListener("click", () => {
+  signupMode = !signupMode;
+  $("login-submit").textContent = signupMode ? "Create account" : "Log in";
+  $("mode-btn").textContent = signupMode ? "I already have an account" : "Create an account";
+  $("signup-switch").firstChild.textContent = signupMode ? "" : "New here? ";
+  $("login-form").password.autocomplete = signupMode ? "new-password" : "current-password";
+  $("login-error").textContent = signupMode ? "Username: 3 to 30 letters, numbers or _. Password: at least 10 characters." : "";
+});
 $("login-form").addEventListener("submit", async (e) => {
   e.preventDefault(); $("login-error").textContent = "";
-  try { await api("/api/login", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(e.target))) }); e.target.reset(); showApp(); }
+  try { await api(signupMode ? "/api/signup" : "/api/login", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(e.target))) }); e.target.reset(); showApp(); }
   catch (err) { $("login-error").textContent = err.message; }
 });
 $("logout").addEventListener("click", async () => { await api("/api/logout", { method: "POST" }); showLogin(); });
@@ -516,4 +534,4 @@ async function openFund(code) {
 }
 
 /* ---------------------------------------------------------------- start */
-api("/api/me").then(showApp).catch(() => showLogin());
+showApp().catch(() => showLogin());

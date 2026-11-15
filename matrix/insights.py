@@ -89,9 +89,10 @@ def market_mood(conn) -> dict:
     peak = max(v for _, v in s[-250:])
     drawdown = s[-1][1] / peak - 1
     b = conn.execute(
-        "SELECT AVG(share) FROM (SELECT SUM(close > prev_close) * 1.0 / COUNT(*) share FROM stock_prices"
+        "SELECT AVG(share) FROM (SELECT SUM(CASE WHEN close > prev_close THEN 1 ELSE 0 END) * 1.0"
+        " / COUNT(*) AS share FROM stock_prices"
         " WHERE series='EQ' AND date IN (SELECT DISTINCT date FROM stock_prices ORDER BY date DESC LIMIT 5)"
-        " GROUP BY date)").fetchone()[0]
+        " GROUP BY date) AS t").fetchone()[0]
     out = mood_from(vol20, drawdown, b)
     out.update({"as_of": s[-1][0].isoformat(), "volatility": vol20, "drawdown": drawdown, "breadth5": b})
     return out

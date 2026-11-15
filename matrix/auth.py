@@ -54,7 +54,8 @@ def read_token(token: str, secret: str, now: float | None = None) -> str | None:
 def set_user(conn, username: str, password: str) -> None:
     if len(password) < 10:
         raise ValueError("password must be at least 10 characters")
-    conn.execute("INSERT OR REPLACE INTO users (username, password_hash) VALUES (?, ?)",
+    conn.execute("INSERT INTO users (username, password_hash) VALUES (?, ?) ON CONFLICT (username)"
+                 " DO UPDATE SET password_hash=excluded.password_hash",
                  (username, hash_password(password)))
     conn.commit()
 

@@ -1,6 +1,7 @@
 """Matrix web API. Run: python -m uvicorn matrix.api:app --port 8000"""
 import json
 import os
+import re
 import secrets
 import threading
 import time
@@ -20,6 +21,24 @@ MIN_TRADED_VALUE = 1e8  # Rs 10 crore: ignore thinly traded stocks in gainer/los
 STALE_DAYS = 4
 LEVEL_ORDER = "CASE level WHEN 'danger' THEN 0 WHEN 'warning' THEN 1 WHEN 'watch' THEN 2 ELSE 3 END"
 MAX_FAILS, LOCK_SECONDS = 5, 300
+MAX_SIGNUPS_PER_HOUR = 3
+USERNAME = re.compile(r"^[a-z0-9_]{3,30}$")
+
+
+def settings() -> dict:
+    """Deployment settings from environment variables.
+
+    MATRIX_OWNER: the one username that sees stock ratings (empty = everyone, for personal use)
+    MATRIX_SIGNUP=1: allow new people to create accounts
+    MATRIX_SECURE_COOKIE=1: send the login cookie over HTTPS only
+    MATRIX_TRUST_PROXY=1: read the visitor's address from X-Forwarded-For (behind Vercel/Render)
+    """
+    return {
+        "owner": os.environ.get("MATRIX_OWNER", "").strip(),
+        "signup": os.environ.get("MATRIX_SIGNUP") == "1",
+        "secure": os.environ.get("MATRIX_SECURE_COOKIE") == "1",
+        "proxy": os.environ.get("MATRIX_TRUST_PROXY") == "1",
+    }
 
 
 def load_secret() -> str:
@@ -66,10 +85,30 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
             raise HTTPException(401, "Not logged in")
         return name
 
+    def sees_ratings(name: str) -> bool:
+        owner = settings()["owner"]
+        return not owner or name == owner
+
+    def owner_only(name: str = Depends(user)) -> str:
+        if not sees_ratings(name):
+            raise HTTPException(403, "Ratings are private on this site")
+        return name
+
+    def client_ip(request: Request) -> str:
+        if settings()["proxy"]:
+            fwd = request.headers.get("x-forwarded-for", "")
+            if fwd:
+                return fwd.split(",")[0].strip()
+        return request.client.host if request.client else "?"
+
+    def start_session(response: Response, name: str) -> None:
+        response.set_cookie(COOKIE, auth.make_token(name, secret), httponly=True, samesite="strict",
+                            max_age=auth.SESSION_SECONDS, secure=settings()["secure"])
+
     # ---------------------------------------------------------------- auth
     @app.post("/api/login")
     def login(body: Login, request: Request, response: Response):
-        ip = request.client.host if request.client else "?"
+        ip = client_ip(request)
         recent = [t for t in fails[ip] if time.time() - t < LOCK_SECONDS]
         fails[ip] = recent
         if len(recent) >= MAX_FAILS:
@@ -79,9 +118,35 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
             fails[ip].append(time.time())
             raise HTTPException(401, "Wrong username or password")
         fails.pop(ip, None)
-        response.set_cookie(COOKIE, auth.make_token(body.username, secret), httponly=True,
-                            samesite="strict", max_age=auth.SESSION_SECONDS)
+        start_session(response, body.username)
         return {"username": body.username}
+
+    signups: dict[str, list[float]] = defaultdict(list)
+
+    @app.get("/api/config")
+    def config():
+        return {"signup": settings()["signup"]}
+
+    @app.post("/api/signup")
+    def signup(body: Login, request: Request, response: Response):
+        if not settings()["signup"]:
+            raise HTTPException(403, "New accounts are closed")
+        ip = client_ip(request)
+        signups[ip] = [t for t in signups[ip] if time.time() - t < 3600]
+        if len(signups[ip]) >= MAX_SIGNUPS_PER_HOUR:
+            raise HTTPException(429, "Too many new accounts from here. Try again later.")
+        name = body.username.strip().lower()
+        if not USERNAME.match(name):
+            raise HTTPException(400, "Username: 3 to 30 characters, only a-z, 0-9 and _")
+        if len(body.password) < 10:
+            raise HTTPException(400, "Password must be at least 10 characters")
+        with lock:
+            if conn.execute("SELECT 1 FROM users WHERE username=?", (name,)).fetchone():
+                raise HTTPException(409, "That username is taken")
+            auth.set_user(conn, name, body.password)
+        signups[ip].append(time.time())
+        start_session(response, name)
+        return {"username": name}
 
     @app.post("/api/logout")
     def logout(response: Response):
@@ -90,7 +155,7 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
 
     @app.get("/api/me")
     def me(name: str = Depends(user)):
-        return {"username": name}
+        return {"username": name, "ratings": sees_ratings(name)}
 
     # ---------------------------------------------------------------- market
     @app.get("/api/market/summary")
@@ -102,8 +167,10 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                 " ROUND((close / prev_close - 1) * 100, 2) AS change_pct"
                 " FROM stock_prices WHERE date=? AND series='EQ' AND prev_close > 0")
         liquid = f"{base} AND value >= {MIN_TRADED_VALUE}"
-        breadth = q("SELECT SUM(close > prev_close) adv, SUM(close < prev_close) dec,"
-                    " SUM(close = prev_close) unch, SUM(value) turnover, COUNT(*) n"
+        breadth = q("SELECT SUM(CASE WHEN close > prev_close THEN 1 ELSE 0 END) AS adv,"
+                    " SUM(CASE WHEN close < prev_close THEN 1 ELSE 0 END) AS dec,"
+                    " SUM(CASE WHEN close = prev_close THEN 1 ELSE 0 END) AS unch,"
+                    " SUM(value) AS turnover, COUNT(*) AS n"
                     " FROM stock_prices WHERE date=? AND series='EQ'", (latest,))[0]
         return {
             "date": latest,
@@ -114,8 +181,9 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
             "most_active": q(f"{base} ORDER BY value DESC LIMIT 10", (latest,)),
             "heatmap": q(f"{liquid} ORDER BY value DESC LIMIT 120", (latest,)),
             # Share of stocks that rose on each of the last 20 trading days, oldest first.
-            "history": q("SELECT date, SUM(close > prev_close) adv, SUM(close < prev_close) dec,"
-                         " COUNT(*) total FROM stock_prices WHERE series='EQ' AND date IN"
+            "history": q("SELECT date, SUM(CASE WHEN close > prev_close THEN 1 ELSE 0 END) AS adv,"
+                         " SUM(CASE WHEN close < prev_close THEN 1 ELSE 0 END) AS dec,"
+                         " COUNT(*) AS total FROM stock_prices WHERE series='EQ' AND date IN"
                          " (SELECT DISTINCT date FROM stock_prices ORDER BY date DESC LIMIT 20)"
                          " GROUP BY date ORDER BY date"),
             "flags": q("SELECT key AS symbol, reason FROM data_issues WHERE date=?"
@@ -155,6 +223,8 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
     @app.get("/api/stocks/{symbol}")
     def stock_detail(symbol: str, name: str = Depends(user)):
         d = stock_payload(symbol.upper())
+        if not sees_ratings(name):
+            d["score"] = None
         d["alerts"] = q(f"SELECT date, rule, level, title, detail, link, source FROM alerts"
                         f" WHERE symbol=? ORDER BY {LEVEL_ORDER}, date DESC LIMIT 12", (symbol.upper(),))
         d["watched"] = bool(q("SELECT 1 FROM watchlist WHERE username=? AND kind='stock' AND code=?",
@@ -164,7 +234,7 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         return d
 
     @app.get("/api/scores")
-    def scores(limit: int = 15, _: str = Depends(user)):
+    def scores(limit: int = 15, _: str = Depends(owner_only)):
         latest = q("SELECT MAX(date) d FROM stock_scores")[0]["d"]
         if not latest:
             return {"date": None, "top": [], "bottom": []}
@@ -188,12 +258,14 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         words = [w for w in query.split() if w][:6]
         if not words:
             return []
-        where = " AND ".join("f.name LIKE ?" for _ in words)
-        args = [f"%{w}%" for w in words]
+        where = " AND ".join("LOWER(f.name) LIKE ?" for _ in words)
+        args = [f"%{w.lower()}%" for w in words]
         if direct_only:
             where += " AND (f.plan LIKE '%Direct%' OR f.name LIKE '%Direct%')"
         # Closed schemes stop reporting NAVs; hide anything silent for 30+ days.
-        where += " AND n.date >= date((SELECT MAX(date) FROM fund_navs), '-30 day')"
+        newest = q("SELECT MAX(date) AS d FROM fund_navs")[0]["d"]
+        if newest:
+            where += f" AND n.date >= '{(date.fromisoformat(newest) - timedelta(days=30)).isoformat()}'"
         return q(f"SELECT f.scheme_code, f.name, f.amc, f.category, f.plan, f.option, n.nav,"
                  f" n.date FROM funds f JOIN fund_navs n ON n.scheme_code=f.scheme_code AND"
                  f" n.date=(SELECT MAX(date) FROM fund_navs WHERE scheme_code=f.scheme_code)"
@@ -204,7 +276,7 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         if not info:
             raise HTTPException(404, f"Fund {code} not found")
         loaded = q("SELECT 1 FROM pipeline_runs WHERE source='mfapi' AND date=? AND status='ok'"
-                   " AND started_at >= date('now', '-7 day')", (code,))
+                   " AND started_at >= ?", (code, (pipeline.today_ist() - timedelta(days=7)).isoformat()))
         if not loaded:  # fetch full history once a week per fund, on first view
             with lock:
                 pipeline.load_fund_history(conn, code)
@@ -223,7 +295,7 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
 
     # ---------------------------------------------------------------- compare
     @app.get("/api/compare")
-    def compare(items: str, _: str = Depends(user)):
+    def compare(items: str, viewer: str = Depends(user)):
         """items: comma list like stock:TCS,fund:122639 (max 5)."""
         out = []
         for item in [i for i in items.split(",") if i][:5]:
@@ -238,7 +310,7 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
             else:
                 raise HTTPException(400, f"Unknown item '{item}'. Use stock:SYMBOL or fund:CODE")
             out.append({"kind": kind, "code": d["code"], "name": name, "stats": d["stats"],
-                        "score": d.get("score"), "history": hist[-800:]})
+                        "score": d.get("score") if sees_ratings(viewer) else None, "history": hist[-800:]})
         return out
 
     # ---------------------------------------------------------------- portfolio
@@ -313,7 +385,7 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
             return insights.tax_view(conn, name)
 
     @app.get("/api/ledger")
-    def track_record(_: str = Depends(user)):
+    def track_record(_: str = Depends(owner_only)):
         with lock:
             return ledger.track_record(conn)
 
@@ -348,7 +420,7 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
             if e.kind not in ("stock", "fund") or portfolio.latest_price(conn, e.kind, code) is None:
                 raise HTTPException(400, f"Unknown {e.kind} '{e.code}'")
             conn.execute("INSERT INTO journal (username, kind, code, note, sell_if, review_on, created_at)"
-                         " VALUES (?,?,?,?,?,?,datetime('now'))",
+                         " VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP)",
                          (name, e.kind, code, note, (e.sell_if or "").strip() or None, e.review_on))
             conn.commit()
         return {"ok": True}
@@ -408,8 +480,8 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         with lock:
             if w.kind not in ("stock", "fund") or portfolio.latest_price(conn, w.kind, code) is None:
                 raise HTTPException(400, f"Unknown {w.kind} '{w.code}'")
-            conn.execute("INSERT OR IGNORE INTO watchlist (username, kind, code, added_at)"
-                         " VALUES (?,?,?,datetime('now'))", (name, w.kind, code))
+            conn.execute("INSERT INTO watchlist (username, kind, code, added_at)"
+                         " VALUES (?,?,?,CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING", (name, w.kind, code))
             conn.commit()
         return {"ok": True}
 

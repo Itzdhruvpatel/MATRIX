@@ -149,8 +149,8 @@ def compute(conn) -> int:
     by_symbol = defaultdict(list)
     for r in conn.execute(
             "SELECT symbol, date, close, prev_close, high, value, series FROM stock_prices"
-            " WHERE series IN ('EQ','BE','BZ') AND date >= date(?, '-400 day') ORDER BY date",
-            (latest,)):
+            " WHERE series IN ('EQ','BE','BZ') AND date >= ? ORDER BY date",
+            (_days_before(latest, 400),)):
         if r["symbol"] in today_syms:
             by_symbol[r["symbol"]].append(dict(r))
     for sym, rows in by_symbol.items():
@@ -179,3 +179,7 @@ def compute(conn) -> int:
 
 if __name__ == "__main__":
     print(f"Radar raised {compute(db.connect())} alerts")
+
+
+def _days_before(day: str, n: int) -> str:
+    return (date.fromisoformat(day) - timedelta(days=n)).isoformat()

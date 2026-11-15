@@ -7,6 +7,8 @@ import json
 import statistics
 from collections import defaultdict
 
+from datetime import date, timedelta
+
 from matrix import analytics, db
 
 MIN_DAYS = 120               # need about 6 months of trading history
@@ -105,8 +107,8 @@ def compute(conn, as_of: str | None = None) -> int:
     by_symbol = defaultdict(list)
     for r in conn.execute(
             "SELECT symbol, date, close, prev_close, value FROM stock_prices"
-            " WHERE series IN ('EQ','BE','BZ') AND date >= date(?, '-400 day') AND date <= ?"
-            " ORDER BY date", (latest, latest)):
+            " WHERE series IN ('EQ','BE','BZ') AND date >= ? AND date <= ?"
+            " ORDER BY date", (_days_before(latest, 400), latest)):
         if r["symbol"] in series_today:
             by_symbol[r["symbol"]].append(dict(r))
     stocks = {}
@@ -127,3 +129,7 @@ def compute(conn, as_of: str | None = None) -> int:
 
 if __name__ == "__main__":
     print(f"Scored {compute(db.connect())} stocks")
+
+
+def _days_before(day: str, n: int) -> str:
+    return (date.fromisoformat(day) - timedelta(days=n)).isoformat()

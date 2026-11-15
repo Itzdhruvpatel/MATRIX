@@ -1,5 +1,10 @@
-"""SQLite storage. Plain SQL so it can move to PostgreSQL later."""
+"""Storage. SQLite on your own computer; PostgreSQL (for example Supabase) when DATABASE_URL is set.
+
+All SQL in Matrix is written to run on both. The PostgreSQL wrapper below only converts
+placeholders and returns rows that behave like sqlite3.Row.
+"""
 import os
+import re
 import sqlite3
 from pathlib import Path
 
@@ -74,7 +79,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     kind TEXT NOT NULL CHECK (kind IN ('stock', 'fund')),
     code TEXT NOT NULL, side TEXT NOT NULL CHECK (side IN ('buy', 'sell')),
     date TEXT NOT NULL, quantity REAL NOT NULL CHECK (quantity > 0),
-    price REAL NOT NULL CHECK (price > 0), note TEXT, created_at TEXT
+    price REAL NOT NULL CHECK (price > 0), note TEXT, created_at TEXT,
+    book TEXT NOT NULL DEFAULT 'real'
 );
 CREATE INDEX IF NOT EXISTS ix_tx_user ON transactions(username);
 
@@ -87,7 +93,11 @@ CREATE INDEX IF NOT EXISTS ix_journal_user ON journal(username, review_on);
 """
 
 
-def connect(path: str | Path | None = None) -> sqlite3.Connection:
+def connect(path: str | Path | None = None):
+    """PostgreSQL when DATABASE_URL is set (and no path is given), otherwise SQLite."""
+    url = os.environ.get("DATABASE_URL") if path is None else None
+    if url:
+        return PgConnection(url)
     path = path or os.environ.get("MATRIX_DB") or DEFAULT_PATH
     if path != ":memory:":
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -101,3 +111,73 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
         conn.execute("ALTER TABLE transactions ADD COLUMN book TEXT NOT NULL DEFAULT 'real'")
         conn.commit()
     return conn
+
+
+# ---------------------------------------------------------------- PostgreSQL
+_NAMED = re.compile(r"(?<![:\w]):([A-Za-z_]\w*)")
+
+
+def to_pg(sql: str) -> str:
+    """SQLite-style placeholders (? and :name) to psycopg style (%s and %(name)s).
+
+    A literal % (as in LIKE '%Direct%') must be doubled for psycopg.
+    """
+    sql = sql.replace("%", "%%")
+    sql = sql.replace("?", "%s")
+    return _NAMED.sub(r"%(\1)s", sql)
+
+
+def pg_schema() -> list[str]:
+    s = SCHEMA.replace("id INTEGER PRIMARY KEY", "id BIGSERIAL PRIMARY KEY")
+    s = re.sub(r"\bINTEGER\b", "BIGINT", s)
+    s = re.sub(r"\bREAL\b", "DOUBLE PRECISION", s)
+    return [stmt.strip() for stmt in s.split(";") if stmt.strip()]
+
+
+class Row(tuple):
+    """A row you can read by position, by column name, or turn into a dict (like sqlite3.Row)."""
+
+    def __new__(cls, values, keys):
+        row = super().__new__(cls, values)
+        row._keys = keys
+        return row
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            return tuple.__getitem__(self, self._keys.index(key))
+        return tuple.__getitem__(self, key)
+
+    def keys(self):
+        return list(self._keys)
+
+
+def _row_factory(cursor):
+    keys = [c.name for c in cursor.description] if cursor.description else []
+    return lambda values: Row(values, keys)
+
+
+class PgConnection:
+    """The small part of sqlite3.Connection that Matrix uses, on top of psycopg."""
+
+    def __init__(self, url: str):
+        import psycopg
+        # autocommit: each statement saves at once, like Matrix's SQLite usage with commit().
+        # prepare_threshold=None: works through Supabase's connection pooler.
+        self._c = psycopg.connect(url, autocommit=True, row_factory=_row_factory,
+                                  prepare_threshold=None)
+        for stmt in pg_schema():
+            self._c.execute(stmt)
+
+    def execute(self, sql: str, params=()):
+        return self._c.execute(to_pg(sql), params or None)
+
+    def executemany(self, sql: str, seq):
+        cur = self._c.cursor()
+        cur.executemany(to_pg(sql), list(seq))
+        return cur
+
+    def commit(self):
+        pass  # autocommit
+
+    def close(self):
+        self._c.close()

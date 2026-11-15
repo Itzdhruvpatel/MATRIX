@@ -45,7 +45,7 @@ def test_api_requires_login(client):
     assert client.get("/api/market/summary").status_code == 401
     assert login(client, "wrong").status_code == 401
     assert login(client).status_code == 200
-    assert client.get("/api/me").json() == {"username": "owner"}
+    assert client.get("/api/me").json() == {"username": "owner", "ratings": True}
 
 
 def test_login_lockout_after_repeated_failures(client):
@@ -198,3 +198,38 @@ def test_journal_flow(client):
     assert client.get("/api/journal").json()[0]["due"] is False
     assert client.delete(f"/api/journal/{e['id']}").status_code == 200
     assert client.get("/api/journal").json() == []
+
+
+def test_signup_disabled_by_default(client):
+    assert client.get("/api/config").json() == {"signup": False}
+    assert client.post("/api/signup", json={"username": "newbie", "password": "a-long-password"}).status_code == 403
+
+
+def test_signup_and_owner_only_ratings(client, monkeypatch):
+    monkeypatch.setenv("MATRIX_SIGNUP", "1")
+    monkeypatch.setenv("MATRIX_OWNER", "owner")
+    assert client.post("/api/signup", json={"username": "Bad Name!", "password": "a-long-password"}).status_code == 400
+    assert client.post("/api/signup", json={"username": "newbie", "password": "short"}).status_code == 400
+    r = client.post("/api/signup", json={"username": "Newbie", "password": "a-long-password"})
+    assert r.status_code == 200 and r.json()["username"] == "newbie"
+    assert client.get("/api/me").json() == {"username": "newbie", "ratings": False}
+    assert client.get("/api/scores").status_code == 403
+    assert client.get("/api/ledger").status_code == 403
+    assert client.get("/api/stocks/RELIANCE").json()["score"] is None
+    assert client.post("/api/signup", json={"username": "newbie", "password": "a-long-password"}).status_code == 409
+    login(client)  # the owner still sees ratings
+    assert client.get("/api/me").json()["ratings"] is True
+    assert client.get("/api/scores").status_code == 200
+
+
+def test_signup_rate_limit_per_visitor(client, monkeypatch):
+    monkeypatch.setenv("MATRIX_SIGNUP", "1")
+    monkeypatch.setenv("MATRIX_TRUST_PROXY", "1")
+    for i in range(api.MAX_SIGNUPS_PER_HOUR):
+        ok = client.post("/api/signup", json={"username": f"u{i}xx", "password": "a-long-password"},
+                         headers={"x-forwarded-for": "1.1.1.1"})
+        assert ok.status_code == 200
+    blocked = client.post("/api/signup", json={"username": "u9xx", "password": "a-long-password"}, headers={"x-forwarded-for": "1.1.1.1"})
+    assert blocked.status_code == 429
+    other = client.post("/api/signup", json={"username": "u8xx", "password": "a-long-password"}, headers={"x-forwarded-for": "2.2.2.2"})
+    assert other.status_code == 200

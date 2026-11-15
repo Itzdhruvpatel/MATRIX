@@ -71,7 +71,7 @@ def add(conn, username: str, tx: dict) -> str | None:
         return err
     conn.execute(
         "INSERT INTO transactions (username, kind, code, side, date, quantity, price, note,"
-        " book, created_at) VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))",
+        " book, created_at) VALUES (?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)",
         (username, tx["kind"], tx["code"], tx["side"], tx["date"], tx["quantity"], tx["price"],
          tx.get("note"), book))
     conn.commit()
@@ -111,7 +111,7 @@ def import_csv(conn, username: str, text: str, book: str = "real") -> dict:
         return {"added": 0, "errors": errors[:20]}
     conn.executemany(
         "INSERT INTO transactions (username, kind, code, side, date, quantity, price, book,"
-        " created_at) VALUES (?,?,?,?,?,?,?,?,datetime('now'))",
+        " created_at) VALUES (?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)",
         [(username, t["kind"], t["code"], t["side"], t["date"], t["quantity"], t["price"], book)
          for _, t in rows])
     conn.commit()
