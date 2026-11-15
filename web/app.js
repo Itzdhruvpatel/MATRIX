@@ -4,7 +4,7 @@ const whole = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const rupees = (v) => `${v < 0 ? "-" : ""}Rs ${whole.format(Math.abs(v))}`;
 const crore = (v) => `Rs ${whole.format(v / 1e7)} crore`;
-const bigMoney = (v) => (v >= 1e12 ? `Rs ${inr.format(v / 1e12)} lakh crore` : crore(v));
+const bigMoney = (v) => (v >= 1e12 ? `Rs ${inr.format(v / 1e12)} lakh cr` : `Rs ${whole.format(v / 1e7)} cr`);
 const sign = (n) => (n > 0 ? "up" : n < 0 ? "down" : "");
 const pctText = (n, digits = 2) => (n == null ? "n/a" : `${n > 0 ? "+" : ""}${n.toFixed(digits)}%`);
 const fracText = (f, digits = 1) => (f == null ? "n/a" : pctText(f * 100, digits));
@@ -12,7 +12,7 @@ const plainPct = (f) => `${Math.abs(f * 100).toFixed(0)}%`;
 const longDate = (d) => new Date(d + "T00:00:00").toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 const shortDate = (d) => new Date(d + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const SERIES_COLORS = ["#e8891b", "#2e6be6", "#9b51e0", "#0ea5a4"];
+const SERIES_COLORS = ["#00b386", "#3b82f6", "#f59e0b", "#a855f7"];
 const tip = (text) => `<button class="tip" type="button" aria-label="${esc(text)}" data-tip="${esc(text)}">?</button>`;
 
 async function api(path, opts = {}) {
@@ -41,6 +41,7 @@ function switchTab(tab) {
   if (!loaders[tab]) tab = "today";
   document.querySelectorAll("[data-view]").forEach((v) => (v.hidden = v.dataset.view !== tab));
   document.querySelectorAll("[data-tab]").forEach((b) => (b.dataset.tab === tab ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current")));
+  document.body.dataset.tab = tab;
   history.replaceState(null, "", `#${tab}`);
   loaders[tab]().catch((err) => toast(err.message));
 }
@@ -56,10 +57,6 @@ function scoreBadge(s, big = false) {
   const [word, color] = scoreLevel(s);
   return `<span class="score ${big ? "big" : ""}" style="background:var(${color})" title="Matrix Score ${s} out of 100: ${word}"><b>${s}</b><small>${word}</small></span>`;
 }
-function heatShade(chg) {
-  if (chg <= -3) return ["--h-3", true]; if (chg <= -1) return ["--h-2", true]; if (chg < 0) return ["--h-1", false];
-  if (chg < 1) return ["--h1", false]; if (chg < 3) return ["--h2", false]; return ["--h3", true];
-}
 function stockRow(s) {
   return `<li><button class="row-btn" data-symbol="${esc(s.symbol)}">
     <span class="grow"><span class="sym">${esc(s.symbol)}</span><span class="nm">${esc(s.name)}</span></span>
@@ -71,33 +68,18 @@ function stockRow(s) {
 async function loadToday() {
   const s = await api("/api/market/summary");
   if (!s.date) { $("mood-title").textContent = "No market data yet"; $("mood-text").textContent = "Run the data loader once, then come back."; return; }
-  const b = s.breadth;
-  const ratio = b.adv / Math.max(b.dec, 1);
-  const [mood, cls, line] = ratio > 1.5 ? ["Good day", "good", "Most stocks went up today."]
-    : ratio < 0.67 ? ["Bad day", "bad", "Most stocks went down today."]
-    : ["Mixed day", "mixed", "About as many stocks went up as went down."];
-  $("hero-date").textContent = longDate(s.date) + (s.stale ? " (this data is old, check the data loader)" : "");
-  $("mood-title").innerHTML = `Market today <span class="badge ${cls}">${mood}</span>`;
-  const outOf10 = Math.round((b.dec / (b.adv + b.dec + b.unch)) * 10);
-  $("mood-text").textContent = outOf10 >= 5
-    ? `${line} Roughly ${outOf10} out of every 10 stocks fell.`
-    : `${line} Roughly ${10 - outOf10} out of every 10 stocks rose.`;
+  const b = s.breadth, total = b.adv + b.dec + b.unch;
+  const fell = Math.round((b.dec / total) * 10), rose = Math.round((b.adv / total) * 10);
+  $("hero-date").textContent = longDate(s.date) + (s.stale ? " (this data is old, run the data loader)" : "");
+  $("mood-title").textContent = fell > rose ? `${fell} in 10 stocks fell today.` : rose > fell ? `${rose} in 10 stocks rose today.` : "Half rose, half fell today.";
+  $("mood-text").textContent = fell > rose ? "More companies lost value than gained today." : rose > fell ? "More companies gained value than lost today." : "The market was evenly split today.";
   $("kpi-up").textContent = whole.format(b.adv);
   $("kpi-down").textContent = whole.format(b.dec);
   $("kpi-money").textContent = bigMoney(b.turnover);
-  requestAnimationFrame(() => {
-    const t = b.adv + b.dec + b.unch;
-    for (const [c, n] of [["adv", b.adv], ["unch", b.unch], ["dec", b.dec]]) $("breadth").querySelector(`.${c}`).style.width = `${(n / t) * 100}%`;
-  });
-  $("heatmap").innerHTML = s.heatmap.map((h, i) => {
-    const [shade, dark] = heatShade(h.change_pct);
-    return `<button class="tile ${dark ? "dark" : ""}" role="listitem" data-symbol="${esc(h.symbol)}" style="background:var(${shade});animation-delay:${Math.min(i * 5, 600)}ms" title="${esc(h.name)}">
-      <span class="t-sym">${esc(h.symbol)}</span><span class="t-chg">${pctText(h.change_pct, 1)}</span></button>`;
-  }).join("");
-  $("gainers").innerHTML = s.gainers.map(stockRow).join("") || `<li class="empty">No company passed the filter today.</li>`;
-  $("losers").innerHTML = s.losers.map(stockRow).join("") || `<li class="empty">No company passed the filter today.</li>`;
+  $("gainers").innerHTML = s.gainers.slice(0, 5).map(stockRow).join("") || `<li class="empty">No company passed the filter today.</li>`;
+  $("losers").innerHTML = s.losers.slice(0, 5).map(stockRow).join("") || `<li class="empty">No company passed the filter today.</li>`;
   $("flags").innerHTML = s.flags.length
-    ? s.flags.map((f) => `<li><button class="row-btn" data-symbol="${esc(f.symbol)}"><span class="grow"><span class="sym">${esc(f.symbol)}</span></span>
+    ? s.flags.slice(0, 5).map((f) => `<li><button class="row-btn" data-symbol="${esc(f.symbol)}"><span class="grow"><span class="sym">${esc(f.symbol)}</span></span>
         <span class="pill ${f.reason.includes("+") ? "up" : "down"}">${esc(f.reason.replace("price jump ", "").replace(" in one day", ""))}</span></button></li>`).join("")
     : `<li class="empty">Nothing unusual today.</li>`;
   loadHealth();
@@ -138,8 +120,8 @@ async function loadPortfolio() {
       (p.realised_gain ? ` From things you already sold, you ${p.realised_gain >= 0 ? "made" : "lost"} ${rupees(Math.abs(p.realised_gain))}.` : "");
   const a = p.allocation, st = a.stock || 0, fd = a.fund || 0;
   $("pf-alloc").innerHTML = has ? `<span class="kpi-label">How your money is split</span>
-    <div class="alloc-bar"><span style="width:${st * 100}%;background:var(--brand)"></span><span style="width:${fd * 100}%;background:#2e6be6"></span></div>
-    <div class="alloc-legend"><span><i style="background:var(--brand)"></i>Stocks ${Math.round(st * 100)}%</span><span><i style="background:#2e6be6"></i>Mutual funds ${Math.round(fd * 100)}%</span></div>` : "";
+    <div class="alloc-bar"><span style="width:${st * 100}%;background:var(--brand)"></span><span style="width:${fd * 100}%;background:var(--blue)"></span></div>
+    <div class="alloc-legend"><span><i style="background:var(--brand)"></i>Stocks ${Math.round(st * 100)}%</span><span><i style="background:var(--blue)"></i>Mutual funds ${Math.round(fd * 100)}%</span></div>` : "";
   $("pf-warnings").innerHTML = p.warnings.map((w) => `<div class="warn">${esc(w.text)} Too much in one company means one bad event can hurt a lot.</div>`).join("");
   $("pf-holdings").innerHTML = has
     ? `<div class="h-row head"><span>Holding</span><span class="num">Value</span><span class="num">Profit or loss</span><span class="num hide-sm">Yearly growth</span><span class="num hide-sm">Share of total</span></div>` +
@@ -260,10 +242,10 @@ $("drawer-compare").addEventListener("click", () => drawerItem && addCompare(dra
 function chartOptions() {
   return {
     autoSize: true,
-    layout: { background: { color: "transparent" }, textColor: "#667085", fontFamily: "Plus Jakarta Sans" },
-    grid: { vertLines: { visible: false }, horzLines: { color: "#eef0f4" } },
+    layout: { background: { color: "transparent" }, textColor: "#6b7c85", fontFamily: "Nunito" },
+    grid: { vertLines: { visible: false }, horzLines: { color: "#eef2f4" } },
     rightPriceScale: { borderVisible: false }, timeScale: { borderVisible: false, minBarSpacing: 0.001 },
-    crosshair: { horzLine: { labelBackgroundColor: "#0f1b2d" }, vertLine: { labelBackgroundColor: "#0f1b2d" } },
+    crosshair: { horzLine: { labelBackgroundColor: "#1c2b33" }, vertLine: { labelBackgroundColor: "#1c2b33" } },
   };
 }
 function newChart() { if (chart) chart.remove(); chart = LightweightCharts.createChart($("chart"), chartOptions()); return chart; }
@@ -295,7 +277,7 @@ async function openStock(symbol) {
   if (sc) lines.push(`Matrix rates it <b>${sc.score} out of 100 (${scoreLevel(sc.score)[0]})</b> for how its price behaved. This is not a buy or sell signal.`);
   $("drawer-simple").innerHTML = `<h3>In simple words</h3>${lines.map((l) => `<p>${l}</p>`).join("")}`;
 
-  newChart().addCandlestickSeries({ upColor: "#079455", downColor: "#d92d20", wickUpColor: "#079455", wickDownColor: "#d92d20", borderVisible: false })
+  newChart().addCandlestickSeries({ upColor: "#00a37a", downColor: "#e5484d", wickUpColor: "#00a37a", wickDownColor: "#e5484d", borderVisible: false })
     .setData(d.history.map((h) => ({ time: h.date, open: h.open, high: h.high, low: h.low, close: h.close })));
   chart.timeScale().fitContent();
   $("drawer-stats").innerHTML =
@@ -335,7 +317,7 @@ async function openFund(code) {
   if (st.max_drawdown_all != null) lines.push(`Its worst fall ever was <b>${plainPct(st.max_drawdown_all)}</b> from a high. Funds like this can drop that much again.`);
   $("drawer-simple").innerHTML = `<h3>In simple words</h3>${lines.map((l) => `<p>${l}</p>`).join("") || "<p>Not enough history yet to summarise.</p>"}`;
 
-  newChart().addAreaSeries({ lineColor: "#e8891b", topColor: "rgba(232,137,27,.28)", bottomColor: "rgba(232,137,27,0)", lineWidth: 2 })
+  newChart().addAreaSeries({ lineColor: "#00b386", topColor: "rgba(0,179,134,.25)", bottomColor: "rgba(0,179,134,0)", lineWidth: 2 })
     .setData(d.navs.map((n) => ({ time: n.date, value: n.nav })));
   chart.timeScale().fitContent();
   $("drawer-stats").innerHTML =

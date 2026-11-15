@@ -6,7 +6,7 @@
   <title>Matrix</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" defer></script>
   <script src="app.js" defer></script>
@@ -14,7 +14,7 @@
 <body>
   <main id="login-view" class="login" hidden>
     <form id="login-form" class="login-card">
-      <div class="brand big"><span class="logo">M</span>Matrix</div>
+      <div class="brand big">Matrix</div>
       <p class="muted">Understand the Indian market in plain words.</p>
       <label>Username <input name="username" autocomplete="username" required></label>
       <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
@@ -25,7 +25,7 @@
 
   <div id="app-view" hidden>
     <header class="topbar">
-      <div class="brand"><span class="logo">M</span>Matrix</div>
+      <div class="brand">Matrix</div>
       <nav class="tabs" aria-label="Sections">
         <button data-tab="today" aria-current="page">Market today</button>
         <button data-tab="ratings">Ratings</button>
@@ -41,50 +41,33 @@
 
     <!-- MARKET TODAY -->
     <main class="page" data-view="today">
-      <section class="mood-card" id="mood-card">
-        <div class="mood-main">
-          <p class="eyebrow" id="hero-date"></p>
-          <h1 id="mood-title">Loading the market...</h1>
-          <p id="mood-text" class="mood-text"></p>
-          <div class="breadth" id="breadth" aria-hidden="true"><span class="adv"></span><span class="unch"></span><span class="dec"></span></div>
-        </div>
-        <div class="kpis">
-          <div class="kpi up-bg"><span class="kpi-label">Stocks that went up</span><span class="kpi-value" id="kpi-up">-</span></div>
-          <div class="kpi down-bg"><span class="kpi-label">Stocks that went down</span><span class="kpi-value" id="kpi-down">-</span></div>
-          <div class="kpi"><span class="kpi-label">Money traded today</span><span class="kpi-value" id="kpi-money">-</span></div>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card-head">
-          <div>
-            <h2>Today's market map</h2>
-            <p class="hint">Each box is one of the 120 most traded companies. Green means its price went up today, red means it went down. Darker colour means a bigger move. Tap any box to learn more.</p>
-          </div>
-          <div class="legend" aria-hidden="true">
-            <span style="background:var(--h-3)"></span><span style="background:var(--h-2)"></span><span style="background:var(--h-1)"></span><span style="background:var(--h1)"></span><span style="background:var(--h2)"></span><span style="background:var(--h3)"></span>
-            <small>Fell a lot</small><small>Rose a lot</small>
+      <section class="note">
+        <div class="note-body">
+          <p class="note-date" id="hero-date"></p>
+          <h1 id="mood-title" class="note-title">Reading the market...</h1>
+          <p id="mood-text" class="note-sub"></p>
+          <div class="kpis three">
+            <div class="kpi"><span class="kpi-label">Went up</span><span class="kpi-value up" id="kpi-up">-</span></div>
+            <div class="kpi"><span class="kpi-label">Went down</span><span class="kpi-value down" id="kpi-down">-</span></div>
+            <div class="kpi"><span class="kpi-label">Money traded</span><span class="kpi-value" id="kpi-money">-</span></div>
           </div>
         </div>
-        <div id="heatmap" class="heatmap" role="list"></div>
       </section>
 
       <section class="grid two">
         <div class="card">
-          <h2>Rose the most today</h2>
-          <p class="hint">Only companies with at least Rs 10 crore traded, so tiny stocks don't crowd the list.</p>
+          <h2>Top 5 that rose today</h2>
           <ul id="gainers" class="list"></ul>
         </div>
         <div class="card">
-          <h2>Fell the most today</h2>
-          <p class="hint">Same rule: only companies with at least Rs 10 crore traded.</p>
+          <h2>Top 5 that fell today</h2>
           <ul id="losers" class="list"></ul>
         </div>
       </section>
 
       <section class="card warn-card">
-        <h2>Unusual moves to be careful with</h2>
-        <p class="hint">These moved more than 20% in a single day. Big moves often have a reason (results, news, a split). Check the news before you act on them.</p>
+        <h2>Be careful with these</h2>
+        <p class="hint">They moved more than 20% in one day. Check the news before touching them.</p>
         <ul id="flags" class="list compact"></ul>
       </section>
 
@@ -93,9 +76,10 @@
 
     <!-- RATINGS -->
     <main class="page" data-view="ratings" hidden>
-      <section class="intro-card">
-        <h1>Matrix Score</h1>
-        <p class="mood-text">A simple 0 to 100 rating for <strong id="universe">every actively traded stock</strong>, based on how its price behaved over the past year. Higher is better.</p>
+      <section class="note">
+        <div class="note-body">
+        <h1 class="note-title">Matrix Score</h1>
+        <p class="note-sub">A simple 0 to 100 rating for <strong id="universe">every actively traded stock</strong>, based on how its price behaved over the past year. Higher is better.</p>
         <div class="scale">
           <span class="lvl s5">80 to 100<b>Strong</b></span>
           <span class="lvl s4">60 to 79<b>Good</b></span>
@@ -114,6 +98,7 @@
           </ul>
           <p>Each part compares the stock with every other stock. The score looks at the past only. It is <b>not a buy or sell signal</b>. Company profits, debt and news will be added later.</p>
         </details>
+        </div>
       </section>
       <section class="grid two">
         <div class="card"><h2>Highest rated</h2><ul id="top-rated" class="list"></ul></div>
@@ -123,11 +108,12 @@
 
     <!-- PORTFOLIO -->
     <main class="page" data-view="portfolio" hidden>
-      <section class="intro-card" id="pf-summary">
-        <h1>My portfolio</h1>
-        <p id="pf-line" class="mood-text"></p>
+      <section class="note" id="pf-summary">
+        <div class="note-body">
+        <p class="note-date">My portfolio is worth</p>
+        <h1 class="note-title money" id="pf-value">-</h1>
+        <p id="pf-line" class="note-sub"></p>
         <div class="kpis wide">
-          <div class="kpi"><span class="kpi-label">Worth today</span><span class="kpi-value" id="pf-value">-</span></div>
           <div class="kpi"><span class="kpi-label">You put in</span><span class="kpi-value" id="pf-invested">-</span></div>
           <div class="kpi" id="pf-gain-box"><span class="kpi-label">Profit or loss</span><span class="kpi-value" id="pf-gain">-</span></div>
           <div class="kpi"><span class="kpi-label">Yearly growth <button class="tip" aria-label="What is yearly growth?" data-tip="Also called XIRR. Your real yearly return, counting exactly when you put money in and took it out. Compare it with what your bank FD pays.">?</button></span><span class="kpi-value" id="pf-xirr">-</span></div>
@@ -135,6 +121,7 @@
         <div class="split-row">
           <div id="pf-alloc" class="alloc"></div>
           <div id="pf-warnings" class="warnings"></div>
+        </div>
         </div>
       </section>
 
@@ -186,10 +173,12 @@ fund,122639,buy,2025-06-02,120,81.5</pre>
 
     <!-- COMPARE -->
     <main class="page" data-view="compare" hidden>
-      <section class="intro-card">
-        <h1>Compare</h1>
-        <p class="mood-text">See which grew more. Every line starts at 100 on the same day, so a line at 120 means it grew 20%, and 90 means it fell 10%.</p>
+      <section class="note">
+        <div class="note-body">
+        <h1 class="note-title">Compare</h1>
+        <p class="note-sub">See which grew more. Every line starts at 100 on the same day, so a line at 120 means it grew 20%, and 90 means it fell 10%.</p>
         <div id="cmp-chips" class="chips"></div>
+        </div>
       </section>
       <section class="card"><div id="cmp-chart" class="chart tall"></div></section>
       <section class="card"><div class="table-scroll"><table id="cmp-table" class="table"></table></div></section>
