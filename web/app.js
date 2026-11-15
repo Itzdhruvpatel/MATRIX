@@ -12,7 +12,7 @@ const plainPct = (f) => `${Math.abs(f * 100).toFixed(0)}%`;
 const longDate = (d) => new Date(d + "T00:00:00").toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 const shortDate = (d) => new Date(d + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const SERIES_COLORS = ["#00b386", "#3b82f6", "#f59e0b", "#a855f7"];
+const SERIES_COLORS = ["#00e0b0", "#5b8cff", "#ffb36b", "#c084fc"];
 const tip = (text) => `<button class="tip" type="button" aria-label="${esc(text)}" data-tip="${esc(text)}">?</button>`;
 
 async function api(path, opts = {}) {
@@ -64,6 +64,20 @@ function stockRow(s) {
     <span class="pill ${sign(s.change_pct)}">${pctText(s.change_pct)}</span></button></li>`;
 }
 
+// Numbers count up once; the final value is set first so nothing depends on animation running.
+function countUp(el, end) {
+  el.textContent = whole.format(end);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches || el.dataset.done) return;
+  el.dataset.done = "1";
+  const t0 = performance.now();
+  const tick = (t) => {
+    const p = Math.min((t - t0) / 1100, 1);
+    el.textContent = whole.format(Math.round(end * (1 - (1 - p) ** 3)));
+    if (p < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
 /* ---------------------------------------------------------------- market today */
 async function loadToday() {
   const s = await api("/api/market/summary");
@@ -71,10 +85,10 @@ async function loadToday() {
   const b = s.breadth, total = b.adv + b.dec + b.unch;
   const fell = Math.round((b.dec / total) * 10), rose = Math.round((b.adv / total) * 10);
   $("hero-date").textContent = longDate(s.date) + (s.stale ? " (this data is old, run the data loader)" : "");
-  $("mood-title").textContent = fell > rose ? `${fell} in 10 stocks fell today.` : rose > fell ? `${rose} in 10 stocks rose today.` : "Half rose, half fell today.";
+  $("mood-title").innerHTML = fell > rose ? `${fell} in 10 stocks <span class="fall">fell today.</span>` : rose > fell ? `${rose} in 10 stocks <span class="gain">rose today.</span>` : "Half rose, half fell today.";
   $("mood-text").textContent = fell > rose ? "More companies lost value than gained today." : rose > fell ? "More companies gained value than lost today." : "The market was evenly split today.";
-  $("kpi-up").textContent = whole.format(b.adv);
-  $("kpi-down").textContent = whole.format(b.dec);
+  countUp($("kpi-up"), b.adv);
+  countUp($("kpi-down"), b.dec);
   $("kpi-money").textContent = bigMoney(b.turnover);
   $("gainers").innerHTML = s.gainers.slice(0, 5).map(stockRow).join("") || `<li class="empty">No company passed the filter today.</li>`;
   $("losers").innerHTML = s.losers.slice(0, 5).map(stockRow).join("") || `<li class="empty">No company passed the filter today.</li>`;
@@ -275,10 +289,10 @@ $("drawer-watch").addEventListener("click", async () => {
 function chartOptions() {
   return {
     autoSize: true,
-    layout: { background: { color: "transparent" }, textColor: "#6b7c85", fontFamily: "Nunito" },
-    grid: { vertLines: { visible: false }, horzLines: { color: "#eef2f4" } },
+    layout: { background: { color: "transparent" }, textColor: "#8f9abd", fontFamily: "Sora" },
+    grid: { vertLines: { visible: false }, horzLines: { color: "rgba(255,255,255,0.08)" } },
     rightPriceScale: { borderVisible: false }, timeScale: { borderVisible: false, minBarSpacing: 0.001 },
-    crosshair: { horzLine: { labelBackgroundColor: "#1c2b33" }, vertLine: { labelBackgroundColor: "#1c2b33" } },
+    crosshair: { horzLine: { labelBackgroundColor: "#1f4bff" }, vertLine: { labelBackgroundColor: "#1f4bff" } },
   };
 }
 function newChart() { if (chart) chart.remove(); chart = LightweightCharts.createChart($("chart"), chartOptions()); return chart; }
@@ -311,7 +325,7 @@ async function openStock(symbol) {
   if (sc) lines.push(`Matrix rates it <b>${sc.score} out of 100 (${scoreLevel(sc.score)[0]})</b> for how its price behaved. This is not a buy or sell signal.`);
   $("drawer-simple").innerHTML = `<h3>In simple words</h3>${lines.map((l) => `<p>${l}</p>`).join("")}`;
 
-  newChart().addCandlestickSeries({ upColor: "#00a37a", downColor: "#e5484d", wickUpColor: "#00a37a", wickDownColor: "#e5484d", borderVisible: false })
+  newChart().addCandlestickSeries({ upColor: "#2ff0b5", downColor: "#ff6b7d", wickUpColor: "#2ff0b5", wickDownColor: "#ff6b7d", borderVisible: false })
     .setData(d.history.map((h) => ({ time: h.date, open: h.open, high: h.high, low: h.low, close: h.close })));
   chart.timeScale().fitContent();
   $("drawer-stats").innerHTML =
@@ -351,7 +365,7 @@ async function openFund(code) {
   if (st.max_drawdown_all != null) lines.push(`Its worst fall ever was <b>${plainPct(st.max_drawdown_all)}</b> from a high. Funds like this can drop that much again.`);
   $("drawer-simple").innerHTML = `<h3>In simple words</h3>${lines.map((l) => `<p>${l}</p>`).join("") || "<p>Not enough history yet to summarise.</p>"}`;
 
-  newChart().addAreaSeries({ lineColor: "#00b386", topColor: "rgba(0,179,134,.25)", bottomColor: "rgba(0,179,134,0)", lineWidth: 2 })
+  newChart().addAreaSeries({ lineColor: "#00e0b0", topColor: "rgba(0,224,176,.35)", bottomColor: "rgba(0,224,176,0)", lineWidth: 2 })
     .setData(d.navs.map((n) => ({ time: n.date, value: n.nav })));
   chart.timeScale().fitContent();
   $("drawer-stats").innerHTML =

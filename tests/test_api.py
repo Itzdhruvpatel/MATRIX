@@ -149,3 +149,9 @@ def test_watchlist_and_alerts(client):
     assert d["watched"] is True and d["alerts"][0]["level"] == "warning"
     assert client.delete("/api/watchlist/stock/RELIANCE").status_code == 200
     assert client.get("/api/alerts").json()["mine"] == []
+
+
+def test_pages_are_not_cached_but_api_is_untouched(client):
+    assert client.get("/").headers["cache-control"] == "no-cache"
+    assert client.get("/style.css").headers["cache-control"] == "no-cache"
+    assert "cache-control" not in client.get("/api/me").headers

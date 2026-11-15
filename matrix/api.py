@@ -45,6 +45,14 @@ class Login(BaseModel):
 def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
     app = FastAPI(title="Matrix", docs_url=None, redoc_url=None)
     app.state.conn = conn
+
+    @app.middleware("http")
+    async def fresh_pages(request: Request, call_next):
+        # Browsers must re-check pages, styles and scripts so a new version shows at once.
+        response = await call_next(request)
+        if not request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
     lock = threading.Lock()
     fails: dict[str, list[float]] = defaultdict(list)
 
