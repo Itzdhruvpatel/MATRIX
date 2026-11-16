@@ -87,35 +87,41 @@ def import_csv(conn, username: str, text: str, book: str = "real") -> dict:
     rows = []
     for line, raw in enumerate(reader, start=2):
         r = {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
+        kind = r["type"].lower()
         try:
-            rows.append((line, {"kind": r["type"].lower(), "code": r["code"], "side": r["side"].lower(),
-                                "date": r["date"], "quantity": float(r["quantity"]),
-                                "price": float(r["price"])}))
+            rows.append((f"line {line}", {
+                "kind": kind, "code": r["code"].upper() if kind == "stock" else r["code"],
+                "side": r["side"].lower(), "date": r["date"], "quantity": float(r["quantity"]),
+                "price": float(r["price"])}))
         except ValueError:
             return {"added": 0, "errors": [f"line {line}: quantity and price must be numbers"]}
         if len(rows) > MAX_IMPORT_ROWS:
             return {"added": 0, "errors": [f"more than {MAX_IMPORT_ROWS} rows"]}
     if book not in BOOKS:
         return {"added": 0, "errors": ["book must be 'real' or 'paper'"]}
+    errors = add_many(conn, username, rows, book)
+    return {"added": 0 if errors else len(rows), "errors": errors}
+
+
+def add_many(conn, username: str, items: list[tuple[str, dict]], book: str = "real") -> list[str]:
+    """All-or-nothing: check every (label, tx) in date order; save all only if none fail."""
     held = holdings_qty(conn, username, book)
     errors = []
-    for line, tx in sorted(rows, key=lambda x: x[1]["date"]):
-        if tx["kind"] == "stock":
-            tx["code"] = tx["code"].upper()
+    for label, tx in sorted(items, key=lambda x: x[1]["date"]):
         err = validate_tx(conn, tx, held)
         if err:
-            errors.append(f"line {line}: {err}")
+            errors.append(f"{label}: {err}")
             continue
         held[(tx["kind"], tx["code"])] += tx["quantity"] if tx["side"] == "buy" else -tx["quantity"]
     if errors:
-        return {"added": 0, "errors": errors[:20]}
+        return errors[:20]
     conn.executemany(
-        "INSERT INTO transactions (username, kind, code, side, date, quantity, price, book,"
-        " created_at) VALUES (?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)",
-        [(username, t["kind"], t["code"], t["side"], t["date"], t["quantity"], t["price"], book)
-         for _, t in rows])
+        "INSERT INTO transactions (username, kind, code, side, date, quantity, price, note, book,"
+        " created_at) VALUES (?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)",
+        [(username, t["kind"], t["code"], t["side"], t["date"], t["quantity"], t["price"],
+          t.get("note"), book) for _, t in items])
     conn.commit()
-    return {"added": len(rows), "errors": []}
+    return []
 
 
 def summary(conn, username: str, book: str = "real") -> dict:
@@ -159,6 +165,7 @@ def summary(conn, username: str, book: str = "real") -> dict:
             "avg_cost": cost / qty, "price": price, "price_date": as_of, "invested": cost,
             "value": value, "gain": value - cost, "gain_pct": (value / cost - 1) if cost else None,
             "xirr": analytics.xirr(flows),
+            "sources": sorted({t["note"] for t in ts if t["note"]}),
         })
 
     for h in holdings:

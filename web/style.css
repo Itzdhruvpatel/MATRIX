@@ -259,6 +259,7 @@ button.h-row:hover { background: var(--gain-soft); }
 .seg input { position: absolute; opacity: 0; pointer-events: none; }
 .seg label:has(input:checked) { background: var(--ink); color: #fff; }
 .seg label:has(input:focus-visible) { outline: 2px solid var(--green); outline-offset: 2px; }
+.form .row.cas-row { grid-template-columns: 2fr 1fr; }
 .sample { background: rgb(255 255 255 / 0.5); border: 1px solid var(--rule); padding: 12px 14px; font-size: 0.84rem; overflow-x: auto; margin: 0; color: var(--ink-2); }
 
 /* Compare */
@@ -346,6 +347,7 @@ button.h-row:hover { background: var(--gain-soft); }
   .tx-row { grid-template-columns: 1fr 1.2fr 1fr 0.6fr; }
   .form .row { grid-template-columns: 1fr 1fr; }
   .form .row label:first-child { grid-column: 1 / -1; }
+  .form .row.cas-row { grid-template-columns: 1fr; }
   .stats { grid-template-columns: 1fr 1fr; }
   .drawer-inner { padding: 16px 16px 32px; }
   .drawer h2 { font-size: 2rem; }

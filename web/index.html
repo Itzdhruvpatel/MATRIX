@@ -158,6 +158,19 @@
         <div id="pf-holdings" class="holdings"></div>
       </section>
 
+      <form id="cas-form" class="card form real-only">
+        <h2>Bring in all my investments</h2>
+        <p class="hint">Upload your CAS <button class="tip" type="button" aria-label="What is a CAS?" data-tip="Consolidated Account Statement. A free PDF listing every mutual fund under your PAN, whichever app you used (FundzBazar, Groww, Zerodha Coin and others). Ask for the detailed one from camsonline.com or kfintech.com, period from the start. NSDL or CDSL send one for your demat stocks.">?</button> PDF. Every purchase and sale in it is checked first; if anything is wrong, nothing is added. Entries you already have are skipped, so you can upload a newer statement later.</p>
+        <div class="row cas-row">
+          <label>CAS file (PDF) <input id="cas-file" type="file" accept=".pdf,application/pdf" required></label>
+          <label>PDF password <input id="cas-password" type="password" autocomplete="off" required placeholder="The one you set, or your PAN"></label>
+        </div>
+        <p class="hint tight">The password only opens the file on this server for this one upload. Matrix never saves it.</p>
+        <p id="cas-msg" class="error" role="status"></p>
+        <ul id="cas-result" class="list"></ul>
+        <button type="submit" class="primary">Read my statement</button>
+      </form>
+
       <section class="grid two">
         <form id="tx-form" class="card form">
           <h2>Add a purchase or sale</h2>

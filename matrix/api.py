@@ -1,4 +1,6 @@
 """Matrix web API. Run: python -m uvicorn matrix.api:app --port 8000"""
+import base64
+import binascii
 import json
 import os
 import re
@@ -13,7 +15,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from matrix import analytics, auth, db, insights, ledger, pipeline, portfolio, radar, score
+from matrix import analytics, auth, cas, db, insights, ledger, pipeline, portfolio, radar, score
 
 ROOT = Path(__file__).resolve().parent.parent
 COOKIE = "matrix_session"
@@ -362,6 +364,29 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
             raise HTTPException(413, "File too large (1 MB max)")
         with lock:
             r = portfolio.import_csv(conn, name, body.csv, check_book(body.book))
+        if r["errors"]:
+            raise HTTPException(400, "; ".join(r["errors"]))
+        return r
+
+    class CasBody(BaseModel):
+        pdf: str  # base64
+        password: str
+
+    @app.post("/api/portfolio/import-cas")
+    def import_cas(body: CasBody, name: str = Depends(user)):
+        """The password opens the PDF for this one parse; it is never stored or logged."""
+        if len(body.pdf) > 14_000_000:
+            raise HTTPException(413, "File too large (10 MB max)")
+        try:
+            pdf = base64.b64decode(body.pdf, validate=True)
+        except (binascii.Error, ValueError):
+            raise HTTPException(400, "The file did not arrive correctly. Try again.")
+        try:
+            data = cas.read_pdf(pdf, body.password)
+        except cas.CasError as e:
+            raise HTTPException(400, str(e))
+        with lock:
+            r = cas.import_cas(conn, name, data)
         if r["errors"]:
             raise HTTPException(400, "; ".join(r["errors"]))
         return r

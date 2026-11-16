@@ -215,7 +215,7 @@ async function loadPortfolio() {
   $("pf-holdings").innerHTML = has
     ? `<div class="h-row head"><span>Holding</span><span class="num">Value</span><span class="num">Profit or loss</span><span class="num hide-sm">Yearly growth</span><span class="num hide-sm">Share of total</span></div>` +
       p.holdings.map((h) => `<button class="h-row" data-open="${h.kind}:${esc(h.code)}">
-        <span><span class="sym">${esc(h.kind === "stock" ? h.code : h.name)}</span><span class="nm">${inr.format(h.quantity)} ${h.kind === "stock" ? "shares" : "units"} at Rs ${inr.format(h.avg_cost)} each</span></span>
+        <span><span class="sym">${esc(h.kind === "stock" ? h.code : h.name)}</span><span class="nm">${inr.format(h.quantity)} ${h.kind === "stock" ? "shares" : "units"} at Rs ${inr.format(h.avg_cost)} each</span>${h.sources?.length ? `<span class="nm">From ${esc(h.sources.join("; "))}</span>` : ""}</span>
         <span class="num">${rupees(h.value)}<small>Rs ${inr.format(h.price)} each</small></span>
         <span class="num ${sign(h.gain)}">${h.gain >= 0 ? "+" : ""}${rupees(h.gain)}<small>${fracText(h.gain_pct)}</small></span>
         <span class="num hide-sm ${sign(h.xirr)}">${fracText(h.xirr)}</span>
@@ -247,6 +247,24 @@ $("csv-form").addEventListener("submit", async (e) => {
     const r = await api("/api/portfolio/import", { method: "POST", body: JSON.stringify({ csv: await $("csv-file").files[0].text(), book }) });
     msg.className = "error ok"; msg.textContent = `Added ${r.added} entries.`; e.target.reset(); loadPortfolio();
   } catch (err) { msg.textContent = err.message; }
+});
+
+$("cas-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = $("cas-msg"), btn = e.target.querySelector("button[type=submit]");
+  msg.className = "error"; msg.textContent = "Reading the statement. This can take a minute..."; $("cas-result").innerHTML = "";
+  btn.disabled = true;
+  try {
+    const pdf = await new Promise((ok, fail) => { const r = new FileReader(); r.onload = () => ok(r.result.split(",")[1]); r.onerror = fail; r.readAsDataURL($("cas-file").files[0]); });
+    const r = await api("/api/portfolio/import-cas", { method: "POST", body: JSON.stringify({ pdf, password: $("cas-password").value }) });
+    msg.className = "error ok";
+    msg.textContent = `Added ${r.added} entries.` + (r.already ? ` ${r.already} were already saved, so they were skipped.` : "") +
+      (r.holdings_only ? ` ${r.holdings_only} holding${r.holdings_only > 1 ? "s" : ""} came without a purchase history, so ${r.holdings_only > 1 ? "they are" : "it is"} counted from the statement date at that day's price.` : "");
+    $("cas-result").innerHTML = r.holdings.map((h) => `<li><button class="row-btn" data-open="${h.kind}:${esc(h.code)}"><span class="grow"><span class="sym">${esc(h.kind === "stock" ? h.code : h.name)}</span><span class="nm">From ${esc(h.source)}</span></span></button></li>`).join("") +
+      r.skipped.map((s) => `<li class="empty">Skipped: ${esc(s)}</li>`).join("");
+    e.target.reset(); loadPortfolio();
+  } catch (err) { msg.textContent = err.message; }
+  finally { $("cas-password").value = ""; btn.disabled = false; }
 });
 
 /* ---------------------------------------------------------------- alerts */
