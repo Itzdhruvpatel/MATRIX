@@ -91,3 +91,38 @@ def test_load_fund_history_keeps_official_and_flags_mismatch():
     assert s["status"] == "ok" and s["issues"] == 1
     navs = dict(conn.execute("SELECT date, nav FROM fund_navs WHERE scheme_code='120465'"))
     assert navs == {"2026-11-13": 65.12, "2026-11-12": 64.9}  # official value kept
+
+
+def test_data_problems_spots_failed_and_late_updates():
+    from datetime import datetime
+    conn = db.connect(":memory:")
+    run = lambda src, day, status, started, msg=None: conn.execute(  # noqa: E731
+        "INSERT INTO pipeline_runs (source, date, status, message, started_at) VALUES (?,?,?,?,?)",
+        (src, day, status, msg, started))
+    monday_noon = datetime(2026, 11, 16, 12, 0, tzinfo=pipeline.IST)
+    friday_night = datetime(2026, 11, 13, 22, 0, tzinfo=pipeline.IST)
+    assert {p["what"] for p in pipeline.data_problems(conn, monday_noon)} == {"prices", "navs"}
+
+    # Friday's prices loaded, NAVs loaded last night: all fine on Monday at noon.
+    run("nse_bhavcopy", "2026-11-13", "ok", "2026-11-13T19:05:00+05:30")
+    run("amfi_navall", "2026-11-14", "ok", "2026-11-15T23:15:00+05:30")
+    assert pipeline.data_problems(conn, monday_noon) == []
+    assert pipeline.data_problems(conn, friday_night) == []
+
+    # Monday after 9 PM: Monday's prices should be in. A failed try is reported with its reason.
+    monday_night = datetime(2026, 11, 16, 21, 30, tzinfo=pipeline.IST)
+    late = pipeline.data_problems(conn, monday_night)
+    assert [p["what"] for p in late] == ["prices"] and "not loaded yet" in late[0]["text"]
+    run("nse_bhavcopy", "2026-11-16", "error", "2026-11-16T19:05:00+05:30", "HTTPError 403")
+    failed = pipeline.data_problems(conn, monday_night)
+    assert "failed" in failed[0]["text"] and failed[0]["detail"] == "HTTPError 403"
+
+    # NAVs: a newer failed run, or no success for 36 hours, is a problem.
+    run("amfi_navall", "2026-11-16", "error", "2026-11-16T23:15:00+05:30", "timeout")
+    later = datetime(2026, 11, 16, 23, 30, tzinfo=pipeline.IST)
+    assert "failed" in [p for p in pipeline.data_problems(conn, later) if p["what"] == "navs"][0]["text"]
+    run("amfi_navall", "2026-11-17", "ok", "2026-11-17T23:15:00+05:30")
+    assert not [p for p in pipeline.data_problems(conn, datetime(2026, 11, 18, 12, 0, tzinfo=pipeline.IST))
+                if p["what"] == "navs"]
+    assert [p for p in pipeline.data_problems(conn, datetime(2026, 11, 19, 12, 0, tzinfo=pipeline.IST))
+            if p["what"] == "navs"]

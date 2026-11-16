@@ -175,6 +175,42 @@ def load_feeds(conn: sqlite3.Connection, fetch_rss=None, fetch_deals=None) -> di
                     "; ".join(failed) or None, started)
 
 
+PRICES_BY_HOUR = 21    # NSE file appears around 18:00 IST; the daily job runs at 19:00
+NAV_MAX_HOURS = 36     # AMFI NAVs load every night around 23:00 IST
+
+
+def data_problems(conn, at: datetime | None = None) -> list[dict]:
+    """Failed or late daily updates, in plain words, for a banner on Market today."""
+    at = at or datetime.now(IST)
+    out = []
+    day = at.date() if at.hour >= PRICES_BY_HOUR else at.date() - timedelta(days=1)
+    while day.weekday() >= 5:
+        day -= timedelta(days=1)
+    runs = conn.execute("SELECT status, message FROM pipeline_runs WHERE source=? AND date=?"
+                        " ORDER BY id DESC", (nse.SOURCE, day.isoformat())).fetchall()
+    when = f"{day:%a %d %b}"
+    if not any(r[0] in ("ok", "no_data") for r in runs):
+        if runs and runs[0][0] == "error":
+            out.append({"what": "prices", "detail": runs[0][1],
+                        "text": f"The stock price update for {when} failed. Prices shown may be old."})
+        else:
+            out.append({"what": "prices", "detail": None,
+                        "text": f"Stock prices for {when} have not loaded yet. The daily update may"
+                                " not have run. Prices shown may be old."})
+    last = conn.execute("SELECT status, message FROM pipeline_runs WHERE source=? ORDER BY id DESC"
+                        " LIMIT 1", (amfi.SOURCE,)).fetchone()
+    ok = conn.execute("SELECT MAX(started_at) FROM pipeline_runs WHERE source=? AND status='ok'",
+                      (amfi.SOURCE,)).fetchone()[0]
+    if last and last[0] == "error":
+        out.append({"what": "navs", "detail": last[1],
+                    "text": "The mutual fund value (NAV) update failed. Fund values shown may be old."})
+    elif not ok or at - datetime.fromisoformat(ok) > timedelta(hours=NAV_MAX_HOURS):
+        out.append({"what": "navs", "detail": None,
+                    "text": "Mutual fund values (NAVs) have not loaded for over a day."
+                            " The nightly update may not have run."})
+    return out
+
+
 def run(conn: sqlite3.Connection, days: int = 1) -> list[dict]:
     """Load the last `days` trading days of stocks (skipping holidays) plus today's fund NAVs."""
     results, day, loaded, tries = [], today_ist(), 0, 0

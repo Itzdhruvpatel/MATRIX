@@ -618,6 +618,8 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         out["runs"] = q("SELECT source, date, status, rows, issues, message, finished_at"
                         " FROM pipeline_runs ORDER BY id DESC LIMIT 15")
         out["issues"] = q("SELECT severity, COUNT(*) n FROM data_issues GROUP BY severity")
+        with lock:
+            out["problems"] = pipeline.data_problems(conn)
         return out
 
     # ---------------------------------------------------------------- daily refresh

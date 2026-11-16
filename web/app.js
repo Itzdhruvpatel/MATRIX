@@ -177,7 +177,10 @@ async function loadToday() {
 }
 async function loadHealth() {
   const h = await api("/api/health");
-  const stale = h.nse_bhavcopy.stale || h.amfi_navall.stale;
+  const probs = h.problems ?? [];
+  $("data-banner").hidden = !probs.length;
+  $("data-problems").innerHTML = probs.map((p) => `<li><p>${esc(p.text)}</p>${p.detail ? `<small>Technical detail: ${esc(p.detail)}</small>` : ""}</li>`).join("");
+  const stale = h.nse_bhavcopy.stale || h.amfi_navall.stale || probs.length > 0;
   const last = h.runs.find((r) => r.status === "ok");
   $("health").innerHTML = `<span class="dot ${stale ? "bad" : ""}"></span>` + (stale
     ? "Some data is out of date. Run the data loader."

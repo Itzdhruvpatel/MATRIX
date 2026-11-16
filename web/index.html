@@ -46,6 +46,11 @@
 
     <!-- MARKET TODAY -->
     <main class="page" data-view="today">
+      <section class="card data-banner" id="data-banner" role="alert" hidden>
+        <h2>The daily data update has a problem</h2>
+        <ul id="data-problems" class="list"></ul>
+        <p class="hint">Matrix tries again on the next run. If this stays for more than a day, open the "Daily market data" job on GitHub (Actions tab) or the server log to see why.</p>
+      </section>
       <section class="note hero">
         <div class="note-body">
           <p class="note-date" id="hero-date"></p>
