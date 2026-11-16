@@ -32,10 +32,10 @@ let me = { ratings: true };
 async function showApp() {
   me = await api("/api/me");
   // Ratings are private to the site owner when the site is shared.
-  document.querySelector('[data-tab="ratings"]').hidden = !me.ratings;
+  for (const t of ["ratings", "shortlist"]) document.querySelector(`[data-tab="${t}"]`).hidden = !me.ratings;
   $("login-view").hidden = true; $("app-view").hidden = false;
   const want = location.hash.slice(1) || "today";
-  switchTab(want === "ratings" && !me.ratings ? "today" : want);
+  switchTab(["ratings", "shortlist"].includes(want) && !me.ratings ? "today" : want);
 }
 let signupMode = false;
 api("/api/config").then((c) => { $("signup-switch").hidden = !c.signup; }).catch(() => {});
@@ -54,7 +54,7 @@ $("login-form").addEventListener("submit", async (e) => {
 });
 $("logout").addEventListener("click", async () => { await api("/api/logout", { method: "POST" }); showLogin(); });
 
-const loaders = { today: loadToday, ratings: loadRatings, portfolio: loadPortfolio, alerts: loadAlerts, compare: loadCompare };
+const loaders = { today: loadToday, ratings: loadRatings, shortlist: loadShortlist, portfolio: loadPortfolio, alerts: loadAlerts, compare: loadCompare };
 function switchTab(tab) {
   if (!loaders[tab]) tab = "today";
   document.querySelectorAll("[data-view]").forEach((v) => (v.hidden = v.dataset.view !== tab));
@@ -188,6 +188,23 @@ async function loadRatings() {
   loadLedger();
 }
 
+/* ---------------------------------------------------------------- shortlist */
+async function loadShortlist() {
+  const f = $("sl-form"), params = new URLSearchParams({ min_score: f.min_score.value, min_traded_cr: f.min_traded_cr.value });
+  for (const k of ["no_danger", "no_warning", "calm", "uptrend", "small_fall"]) params.set(k, f[k].checked);
+  const r = await api(`/api/shortlist?${params}`);
+  if (!r.date) { $("sl-line").textContent = "No ratings yet. They appear after the data loader runs."; $("sl-list").innerHTML = ""; return; }
+  $("sl-title").textContent = `${whole.format(r.count)} stock${r.count === 1 ? "" : "s"} pass, ${shortDate(r.date)}`;
+  const h = r.history;
+  $("sl-line").innerHTML = !h.periods ? "Not enough history yet to check how these rules did in the past." :
+    `Tried on the last ${h.periods} months (alerts left out, as Matrix only keeps today's): stocks passing these rules returned <b>${fracText(h.avg)}</b> a month on average, against <b>${fracText(h.market_avg)}</b> for simply owning the Nifty. They did better in ${h.won} of ${h.periods} months. ` +
+    (h.avg > h.market_avg ? "Past months do not promise the next one." : "<b>So far, just owning the Nifty did better.</b>");
+  $("sl-list").innerHTML = r.items.map((s) => `<li><button class="row-btn" data-symbol="${esc(s.symbol)}">${scoreBadge(s.score)}
+    <span class="grow"><span class="sym">${esc(s.symbol)}</span><span class="nm">${esc(s.name)}</span><span class="why">${esc(s.why.slice(1).join(", "))}</span></span></button></li>`).join("") +
+    (r.count > r.items.length ? `<li class="empty">Showing the top ${r.items.length}. Tighten the rules to see fewer.</li>` : "") || `<li class="empty">No stock passes all these rules today. Try loosening one.</li>`;
+}
+$("sl-form").addEventListener("submit", (e) => { e.preventDefault(); loadShortlist().catch((err) => toast(err.message)); });
+
 /* ---------------------------------------------------------------- portfolio */
 let book = "real";
 document.querySelectorAll('input[name="book"]').forEach((r) => r.addEventListener("change", () => { book = r.value; loadPortfolio(); }));
@@ -303,6 +320,10 @@ async function loadMood() {
 
 async function loadLedger() {
   const t = await api("/api/ledger");
+  const f = t.forecasts;
+  $("fc-line").innerHTML = forecastVerdict(f);
+  $("fc-table").innerHTML = f.graded ? `<tr><th style="text-align:left">The model said the chance of beating the Nifty was</th><th>Forecasts</th><th>How many really beat it</th></tr>` +
+    f.buckets.filter((b) => b.count).map((b) => `<tr><td>${Math.round(b.from * 100)} to ${Math.round(b.to * 100)} in 100</td><td>${whole.format(b.count)}</td><td>${Math.round(b.beat_share * 100)} in 100</td></tr>`).join("") : "";
   if (!t.periods.length) { $("ledger-line").textContent = "Not enough history yet. The first results appear once a full month has passed after a scored day."; $("ledger-table").innerHTML = ""; return; }
   const n = t.periods.length, beat = t.strong_avg > t.market_avg;
   $("ledger-line").innerHTML = `Over the last ${n} months, Strong stocks returned <b>${fracText(t.strong_avg)}</b> a month on average, Weak stocks <b>${fracText(t.weak_avg)}</b>, and the Nifty <b>${fracText(t.market_avg)}</b>. ` +
@@ -310,10 +331,6 @@ async function loadLedger() {
     `Strong stocks did better than the Nifty in ${t.strong_won_periods} of ${n} months.`;
   $("ledger-table").innerHTML = `<tr><th style="text-align:left">Month starting</th><th>Strong stocks</th><th>Weak stocks</th><th>Nifty</th><th>Strong ones that beat the Nifty</th></tr>` +
     t.periods.map((r) => `<tr><td>${shortDate(r.date)}</td><td class="${sign(r.strong_avg)}">${fracText(r.strong_avg)}</td><td class="${sign(r.weak_avg)}">${fracText(r.weak_avg)}</td><td class="${sign(r.market)}">${fracText(r.market)}</td><td>${Math.round(r.strong_beat_share * 100)} of 100</td></tr>`).join("");
-  const f = t.forecasts;
-  $("fc-line").innerHTML = forecastVerdict(f);
-  $("fc-table").innerHTML = f.graded ? `<tr><th style="text-align:left">The model said the chance of beating the Nifty was</th><th>Forecasts</th><th>How many really beat it</th></tr>` +
-    f.buckets.filter((b) => b.count).map((b) => `<tr><td>${Math.round(b.from * 100)} to ${Math.round(b.to * 100)} in 100</td><td>${whole.format(b.count)}</td><td>${Math.round(b.beat_share * 100)} in 100</td></tr>`).join("") : "";
 }
 
 // How the forecast model has done so far, in one honest paragraph.

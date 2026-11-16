@@ -30,6 +30,7 @@
       <nav class="tabs" aria-label="Sections">
         <button data-tab="today" aria-current="page">Market today</button>
         <button data-tab="ratings">Ratings</button>
+        <button data-tab="shortlist">Shortlist</button>
         <button data-tab="portfolio">My portfolio</button>
         <button data-tab="alerts">Alerts</button>
         <button data-tab="compare">Compare</button>
@@ -130,6 +131,38 @@
         <p class="hint">Every forecast Matrix makes is saved the day it is made and checked once 20 trading days have passed. None is ever changed afterwards.</p>
         <p class="ledger-line" id="fc-line"></p>
         <div class="table-scroll"><table id="fc-table" class="table"></table></div>
+      </section>
+    </main>
+
+    <!-- SHORTLIST -->
+    <main class="page" data-view="shortlist" hidden>
+      <section class="note">
+        <div class="note-body">
+          <h1 class="note-title">Shortlist to research</h1>
+          <p class="note-sub">Pick simple rules and see which stocks pass them today, with the reasons. <strong>Ideas to research, not advice.</strong> A stock on this list still needs you to read about the company before you decide anything.</p>
+        </div>
+      </section>
+      <section class="grid two">
+        <form id="sl-form" class="card form">
+          <h2>My rules</h2>
+          <label>Matrix Score at least
+            <select name="min_score"><option value="40">40 (Average or better)</option><option value="60" selected>60 (Good or better)</option><option value="80">80 (Strong only)</option></select></label>
+          <label>Traded on a normal day, at least <button class="tip" type="button" aria-label="Why does trading matter?" data-tip="Called liquidity. If little is bought and sold each day, it can be hard to sell when you want to, and the price can jump on small orders.">?</button>
+            <select name="min_traded_cr"><option value="1">Rs 1 crore</option><option value="10" selected>Rs 10 crore</option><option value="50">Rs 50 crore</option><option value="200">Rs 200 crore</option></select></label>
+          <div class="checks">
+            <label><input type="checkbox" name="no_danger" checked> No Danger alerts right now</label>
+            <label><input type="checkbox" name="no_warning"> No Warning alerts either</label>
+            <label><input type="checkbox" name="calm"> Moves calmly (calmer than most stocks)</label>
+            <label><input type="checkbox" name="uptrend"> Price above its long-term average</label>
+            <label><input type="checkbox" name="small_fall"> Smaller worst fall this year than most</label>
+          </div>
+          <button type="submit" class="primary">Show my shortlist</button>
+        </form>
+        <section class="card">
+          <h2 id="sl-title">Stocks that pass</h2>
+          <p class="ledger-line" id="sl-line"></p>
+          <ul id="sl-list" class="list"></ul>
+        </section>
       </section>
     </main>
 

@@ -15,7 +15,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from matrix import analytics, auth, cas, db, forecast, insights, ledger, pipeline, portfolio, radar, score
+from matrix import (analytics, auth, cas, db, forecast, insights, ledger, pipeline, portfolio, radar,
+                    score, screener)
 
 ROOT = Path(__file__).resolve().parent.parent
 COOKIE = "matrix_session"
@@ -426,6 +427,11 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
             out = ledger.track_record(conn)
         out["forecasts"] = forecast_record()
         return out
+
+    @app.get("/api/shortlist")
+    def shortlist(rules: screener.Rules = Depends(), _: str = Depends(owner_only)):
+        with lock:
+            return {**screener.shortlist(conn, rules), "history": screener.history(conn, rules)}
 
     @app.get("/api/forecast/{symbol}")
     def stock_forecast(symbol: str, _: str = Depends(owner_only)):

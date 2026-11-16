@@ -260,6 +260,9 @@ button.h-row:hover { background: var(--gain-soft); }
 .seg label:has(input:checked) { background: var(--ink); color: #fff; }
 .seg label:has(input:focus-visible) { outline: 2px solid var(--green); outline-offset: 2px; }
 .form .row.cas-row { grid-template-columns: 2fr 1fr; }
+.checks { display: grid; gap: 10px; }
+.checks label { display: flex; align-items: center; gap: 10px; font-family: var(--serif); font-size: 1.15rem; font-weight: 400; color: var(--ink); cursor: pointer; }
+.checks input { width: 18px; height: 18px; padding: 0; accent-color: var(--green); }
 .sample { background: rgb(255 255 255 / 0.5); border: 1px solid var(--rule); padding: 12px 14px; font-size: 0.84rem; overflow-x: auto; margin: 0; color: var(--ink-2); }
 
 /* Compare */
