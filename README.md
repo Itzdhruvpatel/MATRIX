@@ -9,6 +9,7 @@ This is a research tool. It does not give investment advice, place trades, or gu
 **Market (Today tab)**
 - Plain-language summary of the day, rising vs falling stocks, and a heatmap of the 120 most traded stocks
 - Gainers, losers, unusual moves over 20%, and a data health panel
+- A red banner when the daily price or NAV update fails or runs late, with the reason
 
 **Matrix Score (Ratings tab)**
 - 0 to 100 score for every liquid NSE stock (about 1,500), ranked on momentum, trend, calm, worst fall and ease of trading
@@ -17,6 +18,8 @@ This is a research tool. It does not give investment advice, place trades, or gu
 
 **Portfolio**
 - Add buys and sells by hand or import a CSV (all-or-nothing, every line checked)
+- Import everything at once from a CAS PDF: CAMS or KFintech for mutual funds bought through any app, NSDL or CDSL for demat stocks. You type the PDF password in the page; Matrix uses it for that one read and never saves it. Each holding shows the folio, fund house or demat broker it came from. Uploading a newer statement skips entries you already have
+- A demat CAS lists holdings without purchase prices, so those count from the statement date at that day's price
 - Value, gain, booked gains, and true yearly return (XIRR) per holding and overall
 - Warns when one stock is over 10% of the portfolio
 
@@ -33,6 +36,18 @@ This is a research tool. It does not give investment advice, place trades, or gu
 **Prediction Ledger (Ratings tab)**
 - Re-scores past months using only what was known then, and checks how Strong and Weak stocks did over the next month against the Nifty
 - Every month stays on the record, good or bad
+- So far Strong stocks have not beaten simply owning the Nifty
+
+**Forecast (stock detail, owner only)**
+- Chance the stock beats the Nifty ETF (NIFTYBEES) over the next 20 trading days, from a logistic regression on the five score parts
+- Trained walk-forward: a forecast for a day uses only past days whose 20-day result was known by then
+- Likely range: how far the stock moved over any 20 trading days in the past year, 8 times out of 10
+- Matrix saves each forecast once and never changes it. The Ratings tab grades them against what happened, next to the simple guess the model has to beat. As of 16 November 2026, on 6,079 graded forecasts (all re-created from past data) the model was right 49 times in 100; always guessing "will not beat the Nifty" was right 59 times in 100
+
+**Shortlist (owner only)**
+- Pick plain rules (minimum score, no Danger or Warning alerts, daily trading, calm price, uptrend, small worst fall) and see which stocks pass, with the reasons
+- Replays the same rules on past months and compares the next month with owning the Nifty
+- Ideas to research, not advice
 
 **What if, tax and journal (Portfolio tab)**
 - What if the market falls or rises: estimated effect on each holding, based on how it moved with the Nifty over the past year
@@ -50,6 +65,7 @@ This is a research tool. It does not give investment advice, place trades, or gu
 - Quality checks: broken rows are blocked, moves over 20% in a day are flagged
 - Every stored number keeps its source and fetch time
 - Login with hashed passwords, signed session cookies, and lockout after 5 wrong attempts
+- Optional two-step login (Account page): scan a QR code with any authenticator app, then each login needs the 6-digit code. Codes follow RFC 6238, work once, and allow 30 seconds of clock drift
 - Dashboard: market breadth, gainers, losers, most traded, unusual moves, data health
 - Search across stocks and mutual funds, with a chart and stats for each
 - Automatic refresh: stocks after 19:00 IST on weekdays, NAVs after 23:00 IST, while the server runs
@@ -61,13 +77,14 @@ Needs Python 3.12 or newer.
 ```bash
 pip install -r requirements.txt
 python -m matrix.pipeline --days 250
+python -m matrix.forecast
 python -m matrix.auth YOUR_NAME
 python -m uvicorn matrix.api:app --port 8000
 ```
 
 Then open http://localhost:8000 and log in.
 
-`--days 250` loads about one year of stock prices and computes Matrix Scores (takes a few minutes). Fund history downloads the first time you open each fund.
+`--days 250` loads about one year of stock prices and computes Matrix Scores (takes a few minutes). `python -m matrix.forecast` scores past months and builds the first forecasts from them; after that the daily update adds a forecast each day. Fund history downloads the first time you open each fund.
 
 ## Tests
 
@@ -83,12 +100,15 @@ matrix/validate.py  data quality rules
 matrix/analytics.py returns, risk, XIRR, split adjustment
 matrix/score.py   Matrix Score
 matrix/portfolio.py holdings and returns
+matrix/cas.py     CAS statement import
 matrix/radar.py   Danger Radar rules and alerts
 matrix/insights.py market mood, what-if scenarios, tax view
-matrix/ledger.py  Prediction Ledger (score track record)
+matrix/ledger.py  Prediction Ledger (score and forecast track record)
+matrix/forecast.py 20-day forecast model
+matrix/screener.py Shortlist rules
 matrix/pipeline.py  fetch, validate, store
-matrix/db.py      SQLite schema
-matrix/auth.py    passwords and sessions
+matrix/db.py      schema (SQLite or PostgreSQL)
+matrix/auth.py    passwords, sessions, two-step codes
 matrix/api.py     web API and daily refresh
 web/              dashboard (HTML, CSS, JS)
 docs/             design document
@@ -96,5 +116,6 @@ docs/             design document
 
 ## Notes
 
-- Storage is SQLite for now. The SQL is plain, so moving to PostgreSQL later needs no app changes.
+- Storage is SQLite on your own computer, or PostgreSQL when `DATABASE_URL` is set (see `docs/DEPLOY.md`).
+- The daily GitHub Action stops with "Add the DATABASE_URL secret first" until you add that secret.
 - Data comes from public NSE and AMFI files for personal use. Check their terms before any wider use.

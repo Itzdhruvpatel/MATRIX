@@ -1,6 +1,6 @@
 # Matrix: what's left to build
 
-Status as of 14 November 2026. Full plan: `docs/Matrix-Design.pdf`.
+Status as of 16 November 2026. Full plan: `docs/Matrix-Design.pdf`.
 
 ## 1. Done so far
 
@@ -15,6 +15,12 @@ Status as of 14 November 2026. Full plan: `docs/Matrix-Design.pdf`.
 - Market mood, what-if scenarios, tax view, investment journal, practice money
 - Prediction Ledger: past scores checked against what really happened
 - Danger Radar v1: price rules, official NSE filings (announcements, pledges, insider trades), big deals, follow list, Alerts screen
+- CAS import: every mutual fund (CAMS, KFintech) and demat holding (NSDL, CDSL) from one PDF, with the folio or broker it came from
+- Forecast card: chance of beating the Nifty over 20 trading days, likely range, every forecast saved and graded in the Prediction Ledger
+- Shortlist to research: plain rules, reasons per stock, past months compared with owning the Nifty
+- Two-step login with an authenticator app
+- Banner on Market today when the daily price or NAV update fails or runs late
+- The GitHub Action stops with a clear message until the `DATABASE_URL` secret exists
 
 Effort key: S = a day or less, M = a few days, L = a week or more.
 
@@ -37,7 +43,8 @@ Effort key: S = a day or less, M = a few days, L = a week or more.
 - Macro dashboard: RBI rates, inflation, rupee, crude oil, bond yields. Source: RBI, MOSPI. M
 
 ### Phase 4: Forecast model, Prediction Ledger, paper portfolio
-- Forecast card: chance of beating the index over 1, 3 and 12 months, with a likely range. Never a sure thing. Source: stored history. L
+- Forecast card for 3 and 12 months (20 trading days is done). Needs several years of history to train on. M
+- More training history: the 20-day model has 6 past months to learn from and, so far, does worse than always guessing "will not beat the Nifty". Load more years of prices before trusting it. M
 - Testing on past years the model never saw, compared with simply buying a Nifty index fund. L
 - Kill switch: hide forecasts if they do worse than the index fund for 3 months. S
 - Cooling-off check before large or risky moves. S
@@ -60,14 +67,16 @@ Effort key: S = a day or less, M = a few days, L = a week or more.
 4. **Where it runs.** Your own PC (free, but must stay on for daily updates) or a small cloud server in India (always on, small monthly cost).
 5. **Claude API key** for the news reader, daily brief and AI chat. Cost depends on use; we can set a monthly limit.
 6. **Telegram** for alerts? You'd create a bot (free) and share its token privately in `.env`.
+7. **GitHub secret.** Add `DATABASE_URL` in the repository settings so the daily data job can run (see `docs/DEPLOY.md`).
+8. **`MATRIX_OWNER`** on the hosted site, so only you see ratings, forecasts and the shortlist.
 
 ## 4. Hardening before real money
 
-- Two-step login (password + authenticator app)
+- Two-step login (password + authenticator app): done, turn it on in Account
 - Daily encrypted backups, and a monthly test that restoring works
 - Move from SQLite to PostgreSQL (needed if hosted or data grows)
 - HTTPS if it runs on a server
-- Alert you when a daily data job fails, so stale data never goes unnoticed
+- Alert you when a daily data job fails: done inside the app (banner on Market today). Telegram or email alerts still need item 6 in section 3
 - Check the terms of use of every data source
 - The 3-month paper trading rule (Phase 5) before any real money decision
 
@@ -76,7 +85,8 @@ Effort key: S = a day or less, M = a few days, L = a week or more.
 - Fund history loads only when you first open a fund, so new funds take a few seconds
 - Matrix Score uses price behaviour only. No profits, debt or news yet
 - Prices are end of day, not live
-- CSV import uses Matrix's own format. No broker export or CAS statement import yet
+- A demat CAS (NSDL, CDSL) has no purchase prices, so those holdings count from the statement date. A mutual fund CAS must cover the period from your first purchase
+- The forecast model is not better than a simple guess yet (see the Ratings tab)
 - The `dev` test login should be removed once you create your own
 - Daily updates run only while the server is running
 - All data is in one SQLite file with no automatic backup yet
