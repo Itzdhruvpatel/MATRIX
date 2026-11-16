@@ -15,7 +15,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from matrix import analytics, auth, cas, db, insights, ledger, pipeline, portfolio, radar, score
+from matrix import analytics, auth, cas, db, forecast, insights, ledger, pipeline, portfolio, radar, score
 
 ROOT = Path(__file__).resolve().parent.parent
 COOKIE = "matrix_session"
@@ -409,10 +409,29 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         with lock:
             return insights.tax_view(conn, name)
 
+    graded: dict = {}
+
+    def forecast_record() -> dict:
+        """Grading is slow-ish, so redo it only when forecasts or prices change."""
+        with lock:
+            key = tuple(conn.execute("SELECT (SELECT MAX(date) FROM forecasts),"
+                                     " (SELECT MAX(date) FROM stock_prices)").fetchone())
+            if graded.get("key") != key:
+                graded.update(key=key, record=ledger.forecast_record(conn))
+            return graded["record"]
+
     @app.get("/api/ledger")
     def track_record(_: str = Depends(owner_only)):
         with lock:
-            return ledger.track_record(conn)
+            out = ledger.track_record(conn)
+        out["forecasts"] = forecast_record()
+        return out
+
+    @app.get("/api/forecast/{symbol}")
+    def stock_forecast(symbol: str, _: str = Depends(owner_only)):
+        with lock:
+            fc = forecast.latest(conn, symbol.upper())
+        return {"forecast": fc, "record": forecast_record()}
 
     # ---------------------------------------------------------------- journal
     class Entry(BaseModel):
@@ -550,6 +569,7 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                             " AND status IN ('ok','no_data')", (today.isoformat(),)).fetchone():
                         if pipeline.load_stocks(c, today)["status"] == "ok":
                             score.compute(c)
+                            forecast.compute(c)
                     # Feeds only hold the newest filings, so read them every cycle.
                     if pipeline.load_feeds(c)["rows"]:
                         radar.compute(c)

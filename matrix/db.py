@@ -90,6 +90,13 @@ CREATE TABLE IF NOT EXISTS journal (
     created_at TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_journal_user ON journal(username, review_on);
+
+CREATE TABLE IF NOT EXISTS forecasts (
+    symbol TEXT NOT NULL, date TEXT NOT NULL, horizon INTEGER NOT NULL, prob REAL NOT NULL,
+    low REAL, high REAL, model TEXT NOT NULL, backfilled INTEGER NOT NULL DEFAULT 0, created_at TEXT,
+    PRIMARY KEY (symbol, date, horizon)
+);
+CREATE INDEX IF NOT EXISTS ix_forecast_date ON forecasts(date);
 """
 
 

@@ -310,6 +310,28 @@ async function loadLedger() {
     `Strong stocks did better than the Nifty in ${t.strong_won_periods} of ${n} months.`;
   $("ledger-table").innerHTML = `<tr><th style="text-align:left">Month starting</th><th>Strong stocks</th><th>Weak stocks</th><th>Nifty</th><th>Strong ones that beat the Nifty</th></tr>` +
     t.periods.map((r) => `<tr><td>${shortDate(r.date)}</td><td class="${sign(r.strong_avg)}">${fracText(r.strong_avg)}</td><td class="${sign(r.weak_avg)}">${fracText(r.weak_avg)}</td><td class="${sign(r.market)}">${fracText(r.market)}</td><td>${Math.round(r.strong_beat_share * 100)} of 100</td></tr>`).join("");
+  const f = t.forecasts;
+  $("fc-line").innerHTML = forecastVerdict(f);
+  $("fc-table").innerHTML = f.graded ? `<tr><th style="text-align:left">The model said the chance of beating the Nifty was</th><th>Forecasts</th><th>How many really beat it</th></tr>` +
+    f.buckets.filter((b) => b.count).map((b) => `<tr><td>${Math.round(b.from * 100)} to ${Math.round(b.to * 100)} in 100</td><td>${whole.format(b.count)}</td><td>${Math.round(b.beat_share * 100)} in 100</td></tr>`).join("") : "";
+}
+
+// How the forecast model has done so far, in one honest paragraph.
+function forecastVerdict(r) {
+  if (!r.graded) return "No forecast has been checked yet. The first check comes 20 trading days after the first forecast.";
+  const guess = r.beat_share >= 0.5 ? "will beat the Nifty" : "will not beat the Nifty";
+  const made = r.live ? `${whole.format(r.live)} made live, the rest re-created from past data` : "all re-created from past data, none made live yet";
+  return `Checked on ${whole.format(r.graded)} past forecasts over ${r.days} day${r.days > 1 ? "s" : ""} (${made}): the model got the direction right <b>${Math.round(r.hit_rate * 100)} times in 100</b>. ` +
+    `Simply guessing "${guess}" every time would have been right ${Math.round(r.baseline * 100)} times in 100. ` +
+    (r.hit_rate > r.baseline ? "So far it does a little better than that simple guess." : "<b>So far the model is worse than that simple guess.</b>");
+}
+async function loadForecast(symbol) {
+  const { forecast: f, record: r } = await api(`/api/forecast/${encodeURIComponent(symbol)}`).catch(() => ({}));
+  if (!f || !$("drawer").classList.contains("open") || drawerItem !== `stock:${symbol}`) return;
+  $("drawer-forecast").innerHTML = `<h3>Next 20 trading days, against the Nifty</h3>
+    <p>Matrix's simple model puts the chance that it does better than the Nifty at <b>${Math.round(f.prob * 100)} in 100</b>. Forecast made on ${shortDate(f.date)}.</p>` +
+    (f.low != null ? `<p>Likely range: over any 20 trading days in the past year, this stock moved between <b>${fracText(f.low, 0)}</b> and <b>${fracText(f.high, 0)}</b>, 8 times out of 10.</p>` : "") +
+    `<p class="hint">How good is the model? ${forecastVerdict(r)} A research note, not a reason to buy or sell.</p>`;
 }
 
 let currentMove = -0.2;
@@ -474,7 +496,7 @@ const stat = (k, v, cls = "", help = "") => `<div><dt>${k}${help ? tip(help) : "
 const LABELS = { momentum: "Momentum", trend: "Trend", volatility: "Calm", drawdown: "Worst fall", liquidity: "Easy to trade" };
 function resetDrawer(title) {
   $("drawer-title").textContent = title;
-  for (const id of ["drawer-kicker", "drawer-price", "drawer-score", "drawer-simple", "drawer-stats", "drawer-reasons", "drawer-flags", "drawer-source"]) $(id).innerHTML = "";
+  for (const id of ["drawer-kicker", "drawer-price", "drawer-score", "drawer-simple", "drawer-stats", "drawer-reasons", "drawer-forecast", "drawer-flags", "drawer-source"]) $(id).innerHTML = "";
   if (chart) { chart.remove(); chart = null; }
   $("drawer-watch").hidden = true;
   openDrawer();
@@ -513,6 +535,7 @@ async function openStock(symbol) {
       `<p class="hint">Each bar compares this stock with ${whole.format(sc.universe)} others. 100 means best of all.</p>`
     : `<p class="hint">No Matrix Score yet. A stock needs about 6 months of trading and at least Rs 1 crore traded on a normal day.</p>`;
   paintWatch(d.watched);
+  if (me.ratings) loadForecast(d.info.symbol);
   $("drawer-flags").innerHTML = d.alerts.length ? `<h3>Alerts for this stock</h3><ul class="list">${d.alerts.map((x) => alertItem(x, false)).join("")}</ul>` : "";
   $("drawer-source").textContent = `Source: NSE end-of-day prices, adjusted for splits and bonuses. Updated ${d.info.fetched_at.replace("T", " ").slice(0, 16)}. Not live.`;
 }

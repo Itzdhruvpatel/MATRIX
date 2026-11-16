@@ -126,6 +126,10 @@
         <p class="hint">The Prediction Ledger. Each month Matrix scores every stock using only what was known that day, then checks how Strong and Weak stocks really did over the next month, against simply owning the Nifty. Bad months stay on the record.</p>
         <p class="ledger-line" id="ledger-line"></p>
         <div class="table-scroll"><table id="ledger-table" class="table"></table></div>
+        <h2 class="sub-h">Did the 20-day forecast work?</h2>
+        <p class="hint">Every forecast Matrix makes is saved the day it is made and checked once 20 trading days have passed. None is ever changed afterwards.</p>
+        <p class="ledger-line" id="fc-line"></p>
+        <div class="table-scroll"><table id="fc-table" class="table"></table></div>
       </section>
     </main>
 
@@ -316,6 +320,7 @@ fund,122639,buy,2025-06-02,120,81.5</pre>
         <div id="chart" class="chart"></div>
         <dl id="drawer-stats" class="stats"></dl>
         <div id="drawer-reasons"></div>
+        <div id="drawer-forecast" class="simple"></div>
         <div id="drawer-flags"></div>
         <p id="drawer-source" class="source"></p>
       </div>

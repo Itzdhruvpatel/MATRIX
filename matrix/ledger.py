@@ -42,22 +42,29 @@ def _forward_returns(conn, start: str, end: str, symbols: list[str]) -> dict[str
     return {s: g - 1 for s, g in growth.items()}
 
 
-def track_record(conn, horizon: int = HORIZON) -> dict:
+def checked_dates(conn, horizon: int = HORIZON, until: str | None = None,
+                  limit: int = MAX_SNAPSHOTS) -> list[tuple[str, str]]:
+    """(scored day, day its outcome was known) pairs, newest first, spaced `horizon` apart.
+    With `until`, only outcomes already known on that day count."""
     days = trading_days(conn)
     index = {d: i for i, d in enumerate(days)}
-    scored = [r[0] for r in conn.execute("SELECT DISTINCT date FROM stock_scores ORDER BY date DESC")]
-    snaps, last = [], None
-    for d in scored:  # newest first, spaced at least `horizon` apart, with a full month after
+    out, last = [], None
+    for d in [r[0] for r in conn.execute("SELECT DISTINCT date FROM stock_scores ORDER BY date DESC")]:
         i = index.get(d)
-        if i is None or i + horizon >= len(days) or (last is not None and index[last] - i < horizon):
+        if i is None or i + horizon >= len(days) or (until and days[i + horizon] > until):
             continue
-        snaps.append(d)
-        last = d
-        if len(snaps) >= MAX_SNAPSHOTS:
+        if last is not None and last - i < horizon:
+            continue
+        out.append((d, days[i + horizon]))
+        last = i
+        if len(out) >= limit:
             break
+    return out
+
+
+def track_record(conn, horizon: int = HORIZON) -> dict:
     rows = []
-    for d in snaps:
-        end = days[index[d] + horizon]
+    for d, end in checked_dates(conn, horizon):
         sc = dict(conn.execute("SELECT symbol, score FROM stock_scores WHERE date=?", (d,)))
         rets = _forward_returns(conn, d, end, [*sc, MARKET])
         market = rets.get(MARKET)
@@ -83,6 +90,47 @@ def track_record(conn, horizon: int = HORIZON) -> dict:
         "market_avg": sum(r["market"] for r in rows) / n,
         "strong_beat_share": sum(r["strong_beat_share"] for r in rows) / n,
         "strong_won_periods": sum(r["strong_avg"] > r["market"] for r in rows),
+    }
+
+
+def forecast_record(conn, horizon: int = HORIZON, max_days: int = 120) -> dict:
+    """Grade every logged forecast whose `horizon` days have passed: did the stock beat the Nifty?"""
+    days = trading_days(conn)
+    index = {d: i for i, d in enumerate(days)}
+    dates = [r[0] for r in conn.execute("SELECT DISTINCT date FROM forecasts WHERE horizon=?"
+                                        " ORDER BY date DESC", (horizon,))]
+    # One returns query per forecast day, so only the latest `max_days` days are graded.
+    dates = [d for d in dates if d in index and index[d] + horizon < len(days)][:max_days]
+    n = right = beat = live = 0
+    buckets = [[lo, hi, 0, 0] for lo, hi in ((0, 0.4), (0.4, 0.5), (0.5, 0.6), (0.6, 1.01))]
+    for d in dates:
+        fc = {r[0]: (r[1], r[2]) for r in conn.execute(
+            "SELECT symbol, prob, backfilled FROM forecasts WHERE date=? AND horizon=?", (d, horizon))}
+        rets = _forward_returns(conn, d, days[index[d] + horizon], [*fc, MARKET])
+        market = rets.get(MARKET)
+        if market is None:
+            continue
+        for sym, (p, back) in fc.items():
+            if sym not in rets:
+                continue
+            won = rets[sym] > market
+            n += 1
+            beat += won
+            right += (p >= 0.5) == won
+            live += not back
+            for b in buckets:
+                if b[0] <= p < b[1]:
+                    b[2] += 1
+                    b[3] += won
+    if not n:
+        return {"graded": 0, "horizon": horizon}
+    return {
+        "graded": n, "days": len(dates), "live": live, "horizon": horizon,
+        "hit_rate": right / n, "beat_share": beat / n,
+        # Always guessing the more common result: the bar the model has to clear.
+        "baseline": max(beat / n, 1 - beat / n),
+        "buckets": [{"from": lo, "to": min(hi, 1), "count": c, "beat_share": w / c if c else None}
+                    for lo, hi, c, w in buckets],
     }
 
 

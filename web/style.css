@@ -292,6 +292,9 @@ button.h-row:hover { background: var(--gain-soft); }
 .simple { background: var(--green-bright); color: #fff; padding: 20px 24px; margin: 22px 0 4px; }
 .simple h3 { font-family: var(--hand); font-size: 1.6rem; margin-bottom: 6px; }
 .simple p { margin: 8px 0; font-family: var(--serif); font-size: 1.3rem; line-height: 1.25; }
+.simple:empty { display: none; }
+.simple .hint { color: rgb(255 255 255 / 0.85); font-family: var(--sans, inherit); font-size: 0.92rem; max-width: none; }
+.sub-h { margin-top: 32px; }
 .simple b { font-weight: 400; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .chart { height: 280px; margin: 18px 0; }
 .chart.tall { height: 420px; margin: 0; }

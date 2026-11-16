@@ -196,7 +196,8 @@ if __name__ == "__main__":
     conn = db.connect()
     for r in run(conn, args.days):
         print(r)
-    from matrix import radar, score
+    from matrix import forecast, radar, score
     print(f"Scored {score.compute(conn)} stocks")
+    print(f"Forecast {forecast.compute(conn)} stocks")
     print("feeds:", load_feeds(conn))
     print(f"Radar raised {radar.compute(conn)} alerts")
