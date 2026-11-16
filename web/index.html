@@ -18,6 +18,7 @@
       <p class="muted">Understand the Indian market in plain words.</p>
       <label>Username <input name="username" autocomplete="username" required></label>
       <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+      <label id="code-row" hidden>6-digit code from your authenticator app <input name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
       <p id="login-error" class="error" role="alert"></p>
       <button type="submit" class="primary" id="login-submit">Log in</button>
       <p class="switch-mode" id="signup-switch" hidden>New here? <button type="button" class="link-plain" id="mode-btn">Create an account</button></p>
@@ -39,6 +40,7 @@
         <input id="search" type="search" placeholder="Search any stock or mutual fund" autocomplete="off" aria-label="Search stocks and mutual funds">
         <ul id="search-results" class="search-results" hidden></ul>
       </div>
+      <button class="ghost small" data-goto="account">Account</button>
       <button id="logout" class="ghost small">Log out</button>
     </header>
 
@@ -329,6 +331,37 @@ fund,122639,buy,2025-06-02,120,81.5</pre>
       </section>
       <section class="card"><div id="cmp-chart" class="chart tall"></div></section>
       <section class="card"><div class="table-scroll"><table id="cmp-table" class="table"></table></div></section>
+    </main>
+
+    <!-- ACCOUNT -->
+    <main class="page" data-view="account" hidden>
+      <section class="note">
+        <div class="note-body">
+          <h1 class="note-title">Your account</h1>
+          <p class="note-sub" id="acct-sub"></p>
+        </div>
+      </section>
+      <section class="card form">
+        <h2>Two-step login: <span id="totp-state">off</span></h2>
+        <p class="hint">With this on, logging in needs your password and a 6-digit code from an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, Authy and others). Someone who learns your password still cannot get in.</p>
+        <div id="totp-off" class="form">
+          <div><button class="primary" id="totp-start" type="button">Turn on</button></div>
+          <div id="totp-setup" class="form" hidden>
+            <p class="hint tight">1. In the app, add an account and scan this picture.</p>
+            <div id="totp-qr" class="qr"></div>
+            <p class="hint tight">Cannot scan? Type this key in the app instead: <code id="totp-secret"></code></p>
+            <label>2. Type the 6-digit code the app shows <input id="totp-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
+            <div><button class="primary" id="totp-confirm" type="button">Confirm and turn on</button></div>
+          </div>
+        </div>
+        <div id="totp-on" class="form" hidden>
+          <p class="hint tight">To turn it off, type your password and a current code from the app.</p>
+          <label>Password <input id="totp-off-pw" type="password" autocomplete="current-password"></label>
+          <label>6-digit code <input id="totp-off-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
+          <div><button class="ghost small" id="totp-disable" type="button">Turn off two-step login</button></div>
+        </div>
+        <p id="totp-msg" class="error" role="status"></p>
+      </section>
     </main>
 
     <footer class="disclaimer">

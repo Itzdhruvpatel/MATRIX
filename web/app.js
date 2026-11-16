@@ -49,12 +49,21 @@ $("mode-btn").addEventListener("click", () => {
 });
 $("login-form").addEventListener("submit", async (e) => {
   e.preventDefault(); $("login-error").textContent = "";
-  try { await api(signupMode ? "/api/signup" : "/api/login", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(e.target))) }); e.target.reset(); showApp(); }
+  $("login-error").className = "error";
+  try {
+    const r = await api(signupMode ? "/api/signup" : "/api/login", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
+    if (r.need_code) {
+      $("code-row").hidden = false; e.target.code.focus();
+      $("login-error").className = "error ok"; $("login-error").textContent = "Password is right. Now type the 6-digit code from your authenticator app.";
+      return;
+    }
+    e.target.reset(); $("code-row").hidden = true; showApp();
+  }
   catch (err) { $("login-error").textContent = err.message; }
 });
 $("logout").addEventListener("click", async () => { await api("/api/logout", { method: "POST" }); showLogin(); });
 
-const loaders = { today: loadToday, ratings: loadRatings, shortlist: loadShortlist, portfolio: loadPortfolio, alerts: loadAlerts, compare: loadCompare };
+const loaders = { account: loadAccount, today: loadToday, ratings: loadRatings, shortlist: loadShortlist, portfolio: loadPortfolio, alerts: loadAlerts, compare: loadCompare };
 function switchTab(tab) {
   if (!loaders[tab]) tab = "today";
   document.querySelectorAll("[data-view]").forEach((v) => (v.hidden = v.dataset.view !== tab));
@@ -187,6 +196,37 @@ async function loadRatings() {
   $("bottom-rated").innerHTML = r.bottom.map(item).join("");
   loadLedger();
 }
+
+/* ---------------------------------------------------------------- account */
+async function loadAccount() {
+  me = await api("/api/me");
+  $("acct-sub").textContent = `You are logged in as ${me.username}.`;
+  $("totp-state").textContent = me.totp ? "on" : "off";
+  $("totp-on").hidden = !me.totp; $("totp-off").hidden = me.totp;
+  $("totp-setup").hidden = true; $("totp-start").hidden = false;
+}
+function totpMsg(text, ok = false) { $("totp-msg").className = ok ? "error ok" : "error"; $("totp-msg").textContent = text; }
+$("totp-start").addEventListener("click", async () => {
+  try {
+    const t = await api("/api/totp/setup", { method: "POST" });
+    $("totp-qr").innerHTML = t.qr; $("totp-secret").textContent = t.secret.match(/.{1,4}/g).join(" ");
+    $("totp-setup").hidden = false; $("totp-start").hidden = true; totpMsg(""); $("totp-code").focus();
+  } catch (err) { totpMsg(err.message); }
+});
+$("totp-confirm").addEventListener("click", async () => {
+  try {
+    await api("/api/totp/enable", { method: "POST", body: JSON.stringify({ code: $("totp-code").value }) });
+    $("totp-code").value = ""; $("totp-qr").innerHTML = ""; $("totp-secret").textContent = "";
+    await loadAccount(); totpMsg("Two-step login is on. Next time you log in, Matrix will ask for a code.", true);
+  } catch (err) { totpMsg(err.message); }
+});
+$("totp-disable").addEventListener("click", async () => {
+  try {
+    await api("/api/totp/disable", { method: "POST", body: JSON.stringify({ password: $("totp-off-pw").value, code: $("totp-off-code").value }) });
+    $("totp-off-pw").value = ""; $("totp-off-code").value = "";
+    await loadAccount(); totpMsg("Two-step login is off.", true);
+  } catch (err) { totpMsg(err.message); }
+});
 
 /* ---------------------------------------------------------------- shortlist */
 async function loadShortlist() {

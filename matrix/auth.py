@@ -1,4 +1,4 @@
-"""Password hashing and signed session tokens (stdlib only).
+"""Password hashing, signed session tokens and two-step login codes (stdlib only).
 
 Create or reset a user:  python -m matrix.auth USERNAME
 """
@@ -7,11 +7,14 @@ import getpass
 import hashlib
 import hmac
 import secrets
+import struct
 import sys
 import time
+from urllib.parse import quote
 
 ITERATIONS = 600_000
 SESSION_SECONDS = 12 * 3600
+TOTP_STEP = 30
 
 
 def hash_password(password: str) -> str:
@@ -49,6 +52,38 @@ def read_token(token: str, secret: str, now: float | None = None) -> str | None:
     except (ValueError, UnicodeDecodeError):
         return None
     return username if int(expires) > (now or time.time()) else None
+
+
+# ---------------------------------------------------------------- two-step login (RFC 6238 TOTP)
+def totp(key: bytes, t: float, digits: int = 6, step: int = TOTP_STEP, digest: str = "sha1") -> str:
+    """The code an authenticator app shows at time t (RFC 6238, built on RFC 4226 HOTP)."""
+    mac = hmac.new(key, struct.pack(">Q", int(t // step)), digest).digest()
+    offset = mac[-1] & 0x0F
+    number = struct.unpack(">I", mac[offset:offset + 4])[0] & 0x7FFFFFFF
+    return str(number % 10 ** digits).zfill(digits)
+
+
+def new_totp_secret() -> str:
+    return base64.b32encode(secrets.token_bytes(20)).decode()
+
+
+def totp_uri(username: str, secret: str) -> str:
+    return f"otpauth://totp/Matrix:{quote(username)}?secret={secret}&issuer=Matrix"
+
+
+def check_totp(secret: str, code: str, now: float | None = None, after: int | None = None) -> int | None:
+    """The time step `code` belongs to, allowing one step of clock drift either way, or None.
+    `after` is the last step already used: a code works only once."""
+    code = str(code or "").strip()
+    if len(code) != 6 or not code.isdigit():
+        return None
+    now = time.time() if now is None else now
+    key = base64.b32decode(secret)
+    for drift in (0, -1, 1):
+        step = int(now // TOTP_STEP) + drift
+        if hmac.compare_digest(totp(key, step * TOTP_STEP), code) and (after is None or step > after):
+            return step
+    return None
 
 
 def set_user(conn, username: str, password: str) -> None:

@@ -45,7 +45,7 @@ def test_api_requires_login(client):
     assert client.get("/api/market/summary").status_code == 401
     assert login(client, "wrong").status_code == 401
     assert login(client).status_code == 200
-    assert client.get("/api/me").json() == {"username": "owner", "ratings": True}
+    assert client.get("/api/me").json() == {"username": "owner", "ratings": True, "totp": False}
 
 
 def test_login_lockout_after_repeated_failures(client):
@@ -212,7 +212,7 @@ def test_signup_and_owner_only_ratings(client, monkeypatch):
     assert client.post("/api/signup", json={"username": "newbie", "password": "short"}).status_code == 400
     r = client.post("/api/signup", json={"username": "Newbie", "password": "a-long-password"})
     assert r.status_code == 200 and r.json()["username"] == "newbie"
-    assert client.get("/api/me").json() == {"username": "newbie", "ratings": False}
+    assert client.get("/api/me").json() == {"username": "newbie", "ratings": False, "totp": False}
     assert client.get("/api/scores").status_code == 403
     assert client.get("/api/ledger").status_code == 403
     assert client.get("/api/stocks/RELIANCE").json()["score"] is None

@@ -62,6 +62,7 @@ def load_secret() -> str:
 class Login(BaseModel):
     username: str
     password: str
+    code: str | None = None  # 6-digit code, for users with two-step login on
 
 
 def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
@@ -116,10 +117,23 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         fails[ip] = recent
         if len(recent) >= MAX_FAILS:
             raise HTTPException(429, "Too many attempts. Try again in 5 minutes.")
-        rows = q("SELECT password_hash FROM users WHERE username=?", (body.username,))
+        rows = q("SELECT password_hash, totp_secret FROM users WHERE username=?", (body.username,))
         if not rows or not auth.verify_password(body.password, rows[0]["password_hash"]):
             fails[ip].append(time.time())
             raise HTTPException(401, "Wrong username or password")
+        if rows[0]["totp_secret"]:
+            if not body.code:
+                return {"need_code": True}  # password right; now ask for the app's code
+            with lock:
+                last = conn.execute("SELECT totp_last FROM users WHERE username=?",
+                                    (body.username,)).fetchone()[0]
+                step = auth.check_totp(rows[0]["totp_secret"], body.code, after=last)
+                if step is not None:
+                    conn.execute("UPDATE users SET totp_last=? WHERE username=?", (step, body.username))
+                    conn.commit()
+            if step is None:
+                fails[ip].append(time.time())
+                raise HTTPException(401, "Wrong or expired code. Wait for the next code and try again.")
         fails.pop(ip, None)
         start_session(response, body.username)
         return {"username": body.username}
@@ -158,7 +172,53 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
 
     @app.get("/api/me")
     def me(name: str = Depends(user)):
-        return {"username": name, "ratings": sees_ratings(name)}
+        on = q("SELECT totp_secret FROM users WHERE username=?", (name,))
+        return {"username": name, "ratings": sees_ratings(name), "totp": bool(on and on[0]["totp_secret"])}
+
+    # ---------------------------------------------------------------- two-step login
+    pending_totp: dict[str, str] = {}  # secret shown but not yet confirmed with a code
+
+    class Code(BaseModel):
+        code: str
+
+    class TurnOff(BaseModel):
+        password: str
+        code: str
+
+    @app.post("/api/totp/setup")
+    def totp_setup(name: str = Depends(user)):
+        import segno
+        secret = pending_totp[name] = auth.new_totp_secret()
+        uri = auth.totp_uri(name, secret)
+        return {"secret": secret, "uri": uri, "qr": segno.make(uri, error="m").svg_inline(scale=5, light="#fff")}
+
+    @app.post("/api/totp/enable")
+    def totp_enable(body: Code, name: str = Depends(user)):
+        secret = pending_totp.get(name)
+        if not secret:
+            raise HTTPException(400, "Start again: press Turn on")
+        step = auth.check_totp(secret, body.code)
+        if step is None:
+            raise HTTPException(400, "That code did not match. Check that your phone's clock is right"
+                                     " and type the newest code.")
+        with lock:
+            conn.execute("UPDATE users SET totp_secret=?, totp_last=? WHERE username=?", (secret, step, name))
+            conn.commit()
+        pending_totp.pop(name, None)
+        return {"ok": True}
+
+    @app.post("/api/totp/disable")
+    def totp_disable(body: TurnOff, name: str = Depends(user)):
+        row = q("SELECT password_hash, totp_secret FROM users WHERE username=?", (name,))
+        if not row or not auth.verify_password(body.password, row[0]["password_hash"]):
+            raise HTTPException(400, "Wrong password")
+        with lock:
+            last = conn.execute("SELECT totp_last FROM users WHERE username=?", (name,)).fetchone()[0]
+            if row[0]["totp_secret"] and auth.check_totp(row[0]["totp_secret"], body.code, after=last) is None:
+                raise HTTPException(400, "Wrong or expired code")
+            conn.execute("UPDATE users SET totp_secret=NULL, totp_last=NULL WHERE username=?", (name,))
+            conn.commit()
+        return {"ok": True}
 
     # ---------------------------------------------------------------- market
     @app.get("/api/market/summary")

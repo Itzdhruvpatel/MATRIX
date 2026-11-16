@@ -41,7 +41,9 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
     message TEXT, started_at TEXT, finished_at TEXT
 );
 
-CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS users (
+    username TEXT PRIMARY KEY, password_hash TEXT NOT NULL, totp_secret TEXT, totp_last INTEGER
+);
 
 CREATE TABLE IF NOT EXISTS announcements (
     id TEXT PRIMARY KEY, feed TEXT NOT NULL, company TEXT, symbol TEXT, subject TEXT,
@@ -99,6 +101,13 @@ CREATE TABLE IF NOT EXISTS forecasts (
 CREATE INDEX IF NOT EXISTS ix_forecast_date ON forecasts(date);
 """
 
+# Columns added after a table first shipped: (table, column, type). Old databases get them on connect.
+ADDED_COLUMNS = [
+    ("transactions", "book", "TEXT NOT NULL DEFAULT 'real'"),
+    ("users", "totp_secret", "TEXT"),
+    ("users", "totp_last", "INTEGER"),
+]
+
 
 def connect(path: str | Path | None = None):
     """PostgreSQL when DATABASE_URL is set (and no path is given), otherwise SQLite."""
@@ -112,11 +121,10 @@ def connect(path: str | Path | None = None):
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
-    # Older databases: add the practice-money column to transactions.
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)")}
-    if "book" not in cols:
-        conn.execute("ALTER TABLE transactions ADD COLUMN book TEXT NOT NULL DEFAULT 'real'")
-        conn.commit()
+    for table, col, kind in ADDED_COLUMNS:
+        if col not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
+            conn.commit()
     return conn
 
 
@@ -174,6 +182,9 @@ class PgConnection:
                                   prepare_threshold=None)
         for stmt in pg_schema():
             self._c.execute(stmt)
+        for table, col, kind in ADDED_COLUMNS:
+            kind = kind.replace("INTEGER", "BIGINT")
+            self._c.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {kind}")
 
     def execute(self, sql: str, params=()):
         return self._c.execute(to_pg(sql), params or None)
