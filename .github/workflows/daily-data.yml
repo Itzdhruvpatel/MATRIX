@@ -15,6 +15,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Check the database secret
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Add the DATABASE_URL secret first (GitHub repo > Settings > Secrets and variables > Actions). Without it the data would go into a throwaway file and be lost."
+            exit 1
+          fi
       - run: pip install -r requirements.txt
       - name: Load today's data into the database
         run: python -m matrix.pipeline --days 1
