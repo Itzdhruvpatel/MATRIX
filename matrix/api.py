@@ -551,22 +551,24 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
 
     graded: dict = {}
 
-    def forecast_record() -> dict:
+    def forecast_record(horizon: int = forecast.HORIZON) -> dict:
         """Grading is slow-ish, so redo it only when forecasts or prices change."""
         with lock:
-            key = tuple(conn.execute("SELECT (SELECT MAX(date) FROM forecasts),"
-                                     " (SELECT MAX(date) FROM stock_prices)").fetchone())
-            if graded.get("key") != key:
-                recent = forecast.recent_record(conn)
-                graded.update(key=key, record={**ledger.forecast_record(conn), "recent": recent,
-                                               "paused": forecast.paused(recent)})
-            return graded["record"]
+            key = (horizon, *conn.execute("SELECT (SELECT MAX(date) FROM forecasts),"
+                                          " (SELECT MAX(date) FROM stock_prices)").fetchone())
+            if graded.get(horizon, {}).get("key") != key:
+                recent = forecast.recent_record(conn, horizon)
+                graded[horizon] = {"key": key, "record": {
+                    **ledger.forecast_record(conn, horizon), "recent": recent,
+                    "paused": forecast.paused(recent)}}
+            return graded[horizon]["record"]
 
     @app.get("/api/ledger")
     def track_record(_: str = Depends(owner_only)):
         with lock:
             out = ledger.track_record(conn)
         out["forecasts"] = forecast_record()
+        out["forecasts_longer"] = {h: forecast_record(h) for h in forecast.HORIZONS[1:]}
         return out
 
     @app.get("/api/shortlist")
@@ -576,12 +578,14 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
 
     @app.get("/api/forecast/{symbol}")
     def stock_forecast(symbol: str, _: str = Depends(owner_only)):
-        record = forecast_record()
-        if record["paused"]:
-            return {"forecast": None, "paused": True, "record": record}
-        with lock:
-            fc = forecast.latest(conn, symbol.upper())
-        return {"forecast": fc, "paused": False, "record": record}
+        """The 20-day forecast at the top level; every length under "horizons"."""
+        out = []
+        for h in forecast.HORIZONS:
+            record = forecast_record(h)
+            with lock:
+                fc = None if record["paused"] else forecast.latest(conn, symbol.upper(), h)
+            out.append({"horizon": h, "forecast": fc, "paused": record["paused"], "record": record})
+        return {**out[0], "horizons": out}
 
     # ---------------------------------------------------------------- trade planner
     class Levels(BaseModel):
@@ -830,7 +834,7 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                             " AND status IN ('ok','no_data')", (today.isoformat(),)).fetchone():
                         if pipeline.load_stocks(c, today)["status"] == "ok":
                             score.compute(c)
-                            forecast.compute(c)
+                            forecast.compute_all(c)
                             radar.compute(c)  # price alerts and chart patterns for the new day
                     # NSE posts FII/DII figures in the evening; the API only has the latest day.
                     if today.weekday() < 5 and now.hour >= 19 and not c.execute(

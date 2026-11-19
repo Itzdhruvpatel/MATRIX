@@ -82,3 +82,25 @@ def test_endpoint_hides_forecast_while_paused(market, monkeypatch):  # noqa: F81
     c.post("/api/login", json={"username": "owner", "password": "correct-horse-battery"})
     r = c.get("/api/forecast/WIN1").json()
     assert r["paused"] is True and r["forecast"] is None and r["record"]["paused"] is True
+
+
+def test_three_month_forecasts_need_their_own_longer_history():
+    from tests.test_ledger import fill
+    from matrix import db
+    conn = db.connect(":memory:")
+    for k in range(5):
+        fill(conn, f"WIN{k}", lambda i, k=k: 0.004 + 0.0005 * k, n=420)
+        fill(conn, f"LOSE{k}", lambda i, k=k: -0.004 - 0.0005 * k, n=420)
+    fill(conn, "NIFTYBEES", lambda i: 0.0005, n=420)
+    ledger.backfill(conn, horizon=20)
+    assert forecast.backfill(conn, 63) >= 1
+    rows = conn.execute("SELECT DISTINCT horizon FROM forecasts").fetchall()
+    assert [r[0] for r in rows] == [63]
+    assert forecast.latest(conn, "WIN1", 63)["prob"] > 0.5 and forecast.latest(conn, "WIN1", 20) is None
+    auth.set_user(conn, "owner", "correct-horse-battery")
+    c = TestClient(api.create_app(conn, "s"))
+    c.post("/api/login", json={"username": "owner", "password": "correct-horse-battery"})
+    r = c.get("/api/forecast/WIN1").json()
+    assert [h["horizon"] for h in r["horizons"]] == [20, 63, 252]
+    assert r["forecast"] is None and r["horizons"][1]["forecast"]["horizon"] == 63
+    assert set(c.get("/api/ledger").json()["forecasts_longer"]) == {"63", "252"}

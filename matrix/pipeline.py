@@ -325,7 +325,7 @@ if __name__ == "__main__":
         print(r)
     from matrix import forecast, radar, score
     print(f"Scored {score.compute(conn)} stocks")
-    print(f"Forecast {forecast.compute(conn)} stocks")
+    print(f"Forecast (by length in trading days): {forecast.compute_all(conn)}")
     print("feeds:", load_feeds(conn))
     print("FII/DII:", load_flows(conn))
     print("insider trades:", load_insider(conn))

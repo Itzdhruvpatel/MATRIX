@@ -1,4 +1,5 @@
-"""Forecast: the chance a stock beats the Nifty ETF over the next 20 trading days.
+"""Forecast: the chance a stock beats the Nifty ETF over the next 20, 63 and 252 trading days
+(about a month, 3 months and a year), one model per length.
 
 A plain logistic regression on the five Matrix Score parts, trained only on past scored days
 whose 20-day outcome was already known on the forecast day (walk-forward). Every forecast is
@@ -16,6 +17,7 @@ from datetime import date, timedelta
 from matrix import db, ledger, score
 
 HORIZON = ledger.HORIZON
+HORIZONS = (HORIZON, 63, 252)
 MODEL = "logit-v1"
 MIN_TRAIN_DATES = 2
 KILL_DAYS = 63          # about 3 months of trading days
@@ -109,7 +111,7 @@ def training_set(conn, until: str, horizon: int = HORIZON):
 
 def ranges(conn, as_of: str, symbols: set[str], horizon: int = HORIZON) -> dict[str, tuple]:
     """10th and 90th percentile of each stock's `horizon`-day moves over the past year."""
-    start = (date.fromisoformat(as_of) - timedelta(days=400)).isoformat()
+    start = (date.fromisoformat(as_of) - timedelta(days=400 + horizon * 3 // 2)).isoformat()
     growth = defaultdict(list)
     for sym, close, prev in conn.execute(
             "SELECT symbol, close, prev_close FROM stock_prices WHERE date > ? AND date <= ?"
@@ -160,13 +162,19 @@ def backfill(conn, horizon: int = HORIZON) -> int:
     return made
 
 
-def latest(conn, symbol: str) -> dict | None:
+def compute_all(conn, as_of: str | None = None) -> dict[int, int]:
+    return {h: compute(conn, as_of, h) for h in HORIZONS}
+
+
+def latest(conn, symbol: str, horizon: int = HORIZON) -> dict | None:
     r = conn.execute("SELECT symbol, date, horizon, prob, low, high, model FROM forecasts"
-                     " WHERE symbol=? ORDER BY date DESC LIMIT 1", (symbol,)).fetchone()
+                     " WHERE symbol=? AND horizon=? ORDER BY date DESC LIMIT 1",
+                     (symbol, horizon)).fetchone()
     return dict(r) if r else None
 
 
 if __name__ == "__main__":
     c = db.connect()
     print(f"Scored {ledger.backfill(c)} past dates")
-    print(f"Forecast {backfill(c)} past days (walk-forward)")
+    for h in HORIZONS:
+        print(f"{h} days: forecast {backfill(c, h)} past days (walk-forward)")
