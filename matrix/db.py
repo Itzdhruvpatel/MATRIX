@@ -105,6 +105,12 @@ CREATE TABLE IF NOT EXISTS levels (
     PRIMARY KEY (username, symbol)
 );
 
+CREATE TABLE IF NOT EXISTS insider_trades (
+    link TEXT NOT NULL, n INTEGER NOT NULL, symbol TEXT, person TEXT, category TEXT, side TEXT,
+    shares REAL, value REAL, mode TEXT, traded_on TEXT, held_after_pct REAL, fetched_at TEXT NOT NULL,
+    PRIMARY KEY (link, n)
+);
+
 CREATE TABLE IF NOT EXISTS fii_dii (
     date TEXT NOT NULL, who TEXT NOT NULL CHECK (who IN ('FII', 'DII')),
     buy REAL NOT NULL, sell REAL NOT NULL, net REAL NOT NULL, source TEXT NOT NULL, fetched_at TEXT NOT NULL,
@@ -139,7 +145,7 @@ def connect(path: str | Path | None = None):
     path = path or os.environ.get("MATRIX_DB") or DEFAULT_PATH
     if path != ":memory:":
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path, check_same_thread=False)
+    conn = sqlite3.connect(path, check_same_thread=False, timeout=30)  # wait for the other writer
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)

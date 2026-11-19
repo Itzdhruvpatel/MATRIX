@@ -181,6 +181,63 @@ def announcement_alert(a: dict) -> dict | None:
     return None
 
 
+INSIDER_SELL_VALUE = 1e7   # Rs 1 crore sold in the market by a promoter or director
+INSIDER_BUY_VALUE = 5e6    # Rs 50 lakh bought in the market
+INSIDERS = ("promoter", "director", "key managerial", "kmp", "designated")
+
+
+def insider_alerts(a: dict, trades: list[dict]) -> list[dict]:
+    """Plain alerts from one insider filing's trades. Market sales by promoters or directors are
+    a Warning; buying with their own money is worth knowing; ESOPs, gifts and pledges are Info."""
+    day = (a["published_at"] or "")[:10]
+    trades = [t for t in trades if t.get("side")]
+    sold = {t["shares"] for t in trades if t["side"] == "sell"}
+    # The same number of shares bought and sold in one filing: moved between promoter companies.
+    moved = {t["shares"] for t in trades if t["side"] == "buy"} & sold
+    out = []
+    for t in trades:
+        if t["side"] == "buy" and t["shares"] in moved:
+            continue  # the other half of a transfer, reported with the sale
+        who = (t.get("category") or "").lower()
+        mode = (t.get("mode") or "").lower()
+        value = t.get("value") or 0
+        worth = (f"Rs {value / 1e7:,.1f} crore" if value >= 1e7 else f"Rs {value / 1e5:,.1f} lakh"
+                 if value >= 1e5 else f"Rs {value:,.0f}")
+        verb = {"buy": "bought", "sell": "sold", "pledge": "pledged"}.get(t["side"], t["side"])
+        person = (t.get("person") or "An insider") + (f" ({t['category']})" if t.get("category") else "")
+        detail = f"{person} {verb} {t.get('shares') or 0:,.0f} shares worth {worth}"
+        if t.get("traded_on"):
+            detail += f" on {t['traded_on']}"
+        detail += f", by {t.get('mode') or 'an unstated method'}."
+        if t.get("held_after_pct") is not None:
+            detail += f" Now holds {t['held_after_pct']:g}% of the company."
+        base = {"date": day, "link": a["link"], "source": "NSE insider trading filing"}
+        insider = any(k in who for k in INSIDERS)
+        if t["side"] == "sell" and t["shares"] in moved:
+            out.append({**base, "rule": "insider", "level": "info",
+                        "title": "Shares moved within the promoter group",
+                        "detail": f"{detail} The same number of shares was bought by another promoter"
+                                  " entity, so control did not change."})
+        elif t["side"] == "sell" and insider and "market" in mode and value >= INSIDER_SELL_VALUE:
+            out.append({**base, "rule": "insider_sell", "level": "warning",
+                        "title": f"A promoter or director sold {worth} of shares",
+                        "detail": f"{detail} People inside the company know it best. One sale can have a"
+                                  " personal reason; repeated selling is worth a closer look."})
+        elif t["side"] == "pledge":
+            out.append({**base, "rule": "pledge", "level": "warning", "title": "An insider pledged shares",
+                        "detail": f"{detail} Pledged shares were used to borrow money. If the price falls,"
+                                  " lenders can sell them and push it down further."})
+        elif t["side"] == "buy" and insider and "market" in mode and value >= INSIDER_BUY_VALUE:
+            out.append({**base, "rule": "insider_buy", "level": "info",
+                        "title": f"A promoter or director bought {worth} of shares",
+                        "detail": f"{detail} Insiders putting in their own money can be a good sign,"
+                                  " though it is no guarantee."})
+        else:
+            out.append({**base, "rule": "insider", "level": "info",
+                        "title": "Company insiders traded shares", "detail": detail})
+    return out
+
+
 def deal_alerts(deals: list[dict]) -> list[dict]:
     out = []
     for d in deals:
@@ -214,8 +271,14 @@ def compute(conn) -> int:
         alerts += [(sym, a) for a in price_alerts(rows) + pattern_alerts(rows)]
 
     since = (date.fromisoformat(latest) - timedelta(days=WINDOW_DAYS)).isoformat()
+    details = defaultdict(list)
+    for t in conn.execute("SELECT * FROM insider_trades WHERE side IS NOT NULL ORDER BY link, n"):
+        details[t["link"]].append(dict(t))
     for r in conn.execute("SELECT * FROM announcements WHERE symbol IS NOT NULL AND"
                           " published_at >= ? ORDER BY published_at DESC", (since,)):
+        if r["feed"] == "Insider_Trading" and details.get(r["link"]):
+            alerts += [(r["symbol"], a) for a in insider_alerts(dict(r), details[r["link"]])]
+            continue
         a = announcement_alert(dict(r))
         if a:
             alerts.append((r["symbol"], a))

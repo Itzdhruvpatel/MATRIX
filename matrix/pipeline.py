@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from matrix import db, validate
 import hashlib
 
-from matrix.sources import amfi, mfapi, nse, nse_feeds, nse_flows
+from matrix.sources import amfi, mfapi, nse, nse_feeds, nse_flows, nse_insider
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -192,6 +192,35 @@ def load_flows(conn, fetch=None) -> dict:
                     "ok" if rows else "no_data", len(rows), 0, None, started)
 
 
+def load_insider(conn, fetch=None, limit: int = 150, pause: float = 0.2) -> dict:
+    """Details for insider trading filings not read yet, newest first. A filing with no trades
+    in its file is kept as an empty row (n = 0) so it is not fetched again."""
+    started, fetch = now(), fetch or nse_insider.fetch
+    links = [r[0] for r in conn.execute(
+        "SELECT a.link FROM announcements a WHERE a.feed='Insider_Trading' AND a.link LIKE 'https://%'"
+        " AND NOT EXISTS (SELECT 1 FROM insider_trades t WHERE t.link=a.link)"
+        " ORDER BY a.published_at DESC LIMIT ?", (limit,))]
+    rows, failed = 0, []
+    for link in links:
+        try:
+            trades = nse_insider.parse(fetch(link))
+        except Exception as e:
+            failed.append(f"{link}: {e!r}")
+            continue
+        for n, t in enumerate(trades or [{}], start=1 if trades else 0):
+            conn.execute("INSERT INTO insider_trades (link, n, symbol, person, category, side, shares, value,"
+                         " mode, traded_on, held_after_pct, fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
+                         " ON CONFLICT DO NOTHING",
+                         (link, n, t.get("symbol"), t.get("person"), t.get("category"), t.get("side"),
+                          t.get("shares"), t.get("value"), t.get("mode"), t.get("traded_on"),
+                          t.get("held_after_pct"), started))
+        rows += len(trades)
+        time.sleep(pause)
+    status = "error" if failed and len(failed) == len(links) else "ok"
+    return _log_run(conn, nse_insider.SOURCE, today_ist().isoformat(), status, rows, len(failed),
+                    "; ".join(failed[:3]) or None, started)
+
+
 PRICES_BY_HOUR = 21    # NSE file appears around 18:00 IST; the daily job runs at 19:00
 NAV_MAX_HOURS = 36     # AMFI NAVs load every night around 23:00 IST
 
@@ -277,4 +306,5 @@ if __name__ == "__main__":
     print(f"Forecast {forecast.compute(conn)} stocks")
     print("feeds:", load_feeds(conn))
     print("FII/DII:", load_flows(conn))
+    print("insider trades:", load_insider(conn))
     print(f"Radar raised {radar.compute(conn)} alerts")

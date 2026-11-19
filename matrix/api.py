@@ -824,7 +824,7 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                             " AND status='ok'", (today.isoformat(),)).fetchone():
                         pipeline.load_flows(c)
                     # Feeds only hold the newest filings, so read them every cycle.
-                    if pipeline.load_feeds(c)["rows"]:
+                    if pipeline.load_feeds(c)["rows"] + pipeline.load_insider(c)["rows"]:
                         radar.compute(c)
                     if now.hour >= 23 and not c.execute(
                             "SELECT 1 FROM pipeline_runs WHERE source='amfi_navall' AND"
