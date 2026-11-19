@@ -15,8 +15,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from matrix import (analytics, auth, cas, db, forecast, insights, ledger, pipeline, planner,
-                    portfolio, radar, score, screener)
+from matrix import (analytics, auth, backup, cas, db, forecast, insights, ledger, pipeline,
+                    planner, portfolio, radar, score, screener)
 
 ROOT = Path(__file__).resolve().parent.parent
 COOKIE = "matrix_session"
@@ -747,6 +747,10 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                             "SELECT 1 FROM pipeline_runs WHERE source='amfi_navall' AND"
                             " status='ok' AND started_at LIKE ?", (f"{today}%",)).fetchone():
                         pipeline.load_funds(c)
+                    if now.hour >= 23 and not c.execute(
+                            "SELECT 1 FROM pipeline_runs WHERE source='backup' AND date=?",
+                            (today.isoformat(),)).fetchone():
+                        backup.nightly(c)
                 except Exception as e:  # keep the loop alive; the error is in pipeline_runs
                     print("scheduler error:", e)
                 time.sleep(1800)

@@ -208,6 +208,12 @@ def data_problems(conn, at: datetime | None = None) -> list[dict]:
         out.append({"what": "navs", "detail": None,
                     "text": "Mutual fund values (NAVs) have not loaded for over a day."
                             " The nightly update may not have run."})
+    last = conn.execute("SELECT status, message FROM pipeline_runs WHERE source='backup'"
+                        " ORDER BY id DESC LIMIT 1").fetchone()
+    if last and last[0] == "error":
+        out.append({"what": "backup", "detail": last[1],
+                    "text": "Last night's backup failed or did not restore cleanly. Your data is"
+                            " still here, but there is no fresh copy of it."})
     return out
 
 
