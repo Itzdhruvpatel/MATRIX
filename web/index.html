@@ -35,6 +35,7 @@
         <button data-tab="portfolio">My portfolio</button>
         <button data-tab="alerts">Alerts</button>
         <button data-tab="compare">Compare</button>
+        <button data-tab="planning">Planning</button>
       </nav>
       <div class="search">
         <input id="search" type="search" placeholder="Search any stock or mutual fund" autocomplete="off" aria-label="Search stocks and mutual funds">
@@ -361,6 +362,38 @@ fund,122639,buy,2025-06-02,120,81.5</pre>
       </section>
       <section class="card"><div id="cmp-chart" class="chart tall"></div></section>
       <section class="card"><div class="table-scroll"><table id="cmp-table" class="table"></table></div></section>
+    </main>
+
+    <!-- PLANNING -->
+    <main class="page" data-view="planning" hidden>
+      <section class="note">
+        <div class="note-body">
+          <h1 class="note-title">Goals, with honest ranges</h1>
+          <p class="note-sub">Markets do not move in straight lines, so Matrix shows how a goal could turn out in good years and bad ones, and what it takes to make it likely.</p>
+        </div>
+      </section>
+      <section class="grid two">
+        <form id="goal-form" class="card form">
+          <h2>Add a goal</h2>
+          <label>What for <input name="name" required maxlength="80" placeholder="Example: Child's college"></label>
+          <div class="row">
+            <label>Amount in today's rupees <input name="target" type="number" step="any" min="1" required placeholder="Example: 2500000"></label>
+            <label>By <input name="target_date" type="date" required></label>
+            <label>Saved for it so far (Rs) <input name="saved" type="number" step="any" min="0" value="0"></label>
+          </div>
+          <div class="row">
+            <label>I add each month (Rs) <input name="monthly" type="number" step="any" min="0" value="0"></label>
+            <label>Share in stocks and equity funds (%) <input name="equity_share" type="number" min="0" max="100" value="60"></label>
+          </div>
+          <p class="hint tight">Assumes, over the long run, about 11% a year for shares (swinging about 18% a year) and 7% for debt, with prices rising 6% a year. These are rough averages, not a promise.</p>
+          <p id="goal-msg" class="error" role="status"></p>
+          <button type="submit" class="primary">Add goal</button>
+        </form>
+        <section class="card">
+          <h2>My goals</h2>
+          <ul id="goal-list" class="list"></ul>
+        </section>
+      </section>
     </main>
 
     <!-- ACCOUNT -->

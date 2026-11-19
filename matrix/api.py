@@ -15,8 +15,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from matrix import (analytics, auth, backtest, backup, cas, db, forecast, insights, ledger,
-                    pipeline, planner, portfolio, radar, score, screener)
+from matrix import (analytics, auth, backtest, backup, cas, db, forecast, goals, insights,
+                    ledger, pipeline, planner, portfolio, radar, score, screener)
 
 ROOT = Path(__file__).resolve().parent.parent
 COOKIE = "matrix_session"
@@ -606,6 +606,55 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         with lock:
             conn.execute("DELETE FROM levels WHERE username=? AND symbol=?", (name, symbol.upper()))
             conn.commit()
+        return {"ok": True}
+
+    # ---------------------------------------------------------------- goals
+    class Goal(BaseModel):
+        name: str
+        target: float
+        target_date: str
+        saved: float = 0
+        monthly: float = 0
+        equity_share: float = 0.6
+
+    @app.get("/api/goals")
+    def goal_list(name: str = Depends(user)):
+        out = q("SELECT id, name, target, target_date, saved, monthly, equity_share FROM goals"
+                " WHERE username=? ORDER BY target_date", (name,))
+        for g in out:
+            try:
+                g["projection"] = goals.project(g["target"], g["target_date"], g["saved"], g["monthly"],
+                                                g["equity_share"], seed=g["id"])
+            except ValueError as e:  # the date has passed
+                g["projection"] = None
+                g["problem"] = str(e)
+        return out
+
+    @app.post("/api/goals")
+    def goal_add(g: Goal, name: str = Depends(user)):
+        label = g.name.strip()
+        if not label or len(label) > 80:
+            raise HTTPException(400, "Give the goal a short name")
+        if g.target <= 0 or g.saved < 0 or g.monthly < 0 or not 0 <= g.equity_share <= 1:
+            raise HTTPException(400, "Amounts cannot be negative, and the share in stocks is 0 to 100%")
+        try:
+            goals.project(g.target, g.target_date, g.saved, g.monthly, g.equity_share, paths=1)
+        except ValueError as e:
+            raise HTTPException(400, str(e) if "month" in str(e) else "Date must look like 2040-04-01")
+        with lock:
+            conn.execute("INSERT INTO goals (username, name, target, target_date, saved, monthly,"
+                         " equity_share, created_at) VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP)",
+                         (name, label, g.target, g.target_date, g.saved, g.monthly, g.equity_share))
+            conn.commit()
+        return {"ok": True}
+
+    @app.delete("/api/goals/{goal_id}")
+    def goal_delete(goal_id: int, name: str = Depends(user)):
+        with lock:
+            n = conn.execute("DELETE FROM goals WHERE id=? AND username=?", (goal_id, name)).rowcount
+            conn.commit()
+        if not n:
+            raise HTTPException(404, "Goal not found")
         return {"ok": True}
 
     # ---------------------------------------------------------------- journal

@@ -306,6 +306,10 @@ button.h-row:hover { background: var(--gain-soft); }
 .simple .hint { color: rgb(255 255 255 / 0.85); font-family: var(--sans, inherit); font-size: 0.92rem; max-width: none; }
 .sub-h { margin-top: 32px; }
 .plan { margin-top: 28px; }
+.goal { padding: 14px 4px; }
+.goal h3 { margin: 0 0 6px; }
+.goal small { display: block; font-size: 0.85rem; }
+.goal p { margin: 6px 0; }
 .plan-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .simple b { font-weight: 400; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .chart { height: 280px; margin: 18px 0; }

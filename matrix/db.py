@@ -105,6 +105,12 @@ CREATE TABLE IF NOT EXISTS levels (
     PRIMARY KEY (username, symbol)
 );
 
+CREATE TABLE IF NOT EXISTS goals (
+    id INTEGER PRIMARY KEY, username TEXT NOT NULL, name TEXT NOT NULL, target REAL NOT NULL,
+    target_date TEXT NOT NULL, saved REAL NOT NULL, monthly REAL NOT NULL, equity_share REAL NOT NULL,
+    created_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS practice_limits (
     username TEXT PRIMARY KEY, capital REAL NOT NULL, max_stock_pct REAL NOT NULL,
     max_loss_pct REAL NOT NULL

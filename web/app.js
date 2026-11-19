@@ -63,7 +63,7 @@ $("login-form").addEventListener("submit", async (e) => {
 });
 $("logout").addEventListener("click", async () => { await api("/api/logout", { method: "POST" }); showLogin(); });
 
-const loaders = { account: loadAccount, today: loadToday, ratings: loadRatings, shortlist: loadShortlist, portfolio: loadPortfolio, alerts: loadAlerts, compare: loadCompare };
+const loaders = { planning: loadGoals, account: loadAccount, today: loadToday, ratings: loadRatings, shortlist: loadShortlist, portfolio: loadPortfolio, alerts: loadAlerts, compare: loadCompare };
 function switchTab(tab) {
   if (!loaders[tab]) tab = "today";
   document.querySelectorAll("[data-view]").forEach((v) => (v.hidden = v.dataset.view !== tab));
@@ -258,6 +258,30 @@ $("totp-disable").addEventListener("click", async () => {
     $("totp-off-pw").value = ""; $("totp-off-code").value = "";
     await loadAccount(); totpMsg("Two-step login is off.", true);
   } catch (err) { totpMsg(err.message); }
+});
+
+/* ---------------------------------------------------------------- goals */
+async function loadGoals() {
+  const list = await api("/api/goals");
+  $("goal-list").innerHTML = list.map((g) => {
+    const p = g.projection, years = p ? (p.months / 12).toFixed(p.months % 12 ? 1 : 0) : 0;
+    const body = !p ? `<p>${esc(g.problem)}</p>` : `<p>In ${years} years, prices will have gone up, so it will cost about <b>${rupees(p.need)}</b>. You plan to put in ${rupees(p.put_in)} in total.</p>
+      <p>Chance of getting there: <b>${Math.round(p.chance * 100)} in 100</b>. Likely value by then: ${rupees(p.low)} to ${rupees(p.high)} (8 times in 10), ${rupees(p.middle)} in the middle.</p>
+      <p>${p.chance >= p.likely ? "You are on track for a likely result." : `To make it likely (3 times in 4), put in about <b>${rupees(p.monthly_for_likely)} a month</b> instead of ${rupees(g.monthly)}.`}</p>`;
+    return `<li class="goal"><h3>${esc(g.name)} <small class="muted">${rupees(g.target)} by ${shortDate(g.target_date)}, ${Math.round(g.equity_share * 100)}% in stocks</small></h3>${body}
+      <button class="ghost small" data-goal-del="${g.id}">Remove</button></li>`;
+  }).join("") || `<li class="empty">No goals yet. Add one to see the range of outcomes.</li>`;
+}
+$("goal-form").addEventListener("submit", async (e) => {
+  e.preventDefault(); const f = e.target, v = (k) => f.elements[k].value; $("goal-msg").textContent = "";
+  try {
+    await api("/api/goals", { method: "POST", body: JSON.stringify({ name: v("name"), target: +v("target"), target_date: v("target_date"), saved: +v("saved"), monthly: +v("monthly"), equity_share: v("equity_share") / 100 }) });
+    f.reset(); loadGoals();
+  } catch (err) { $("goal-msg").textContent = err.message; }
+});
+$("goal-list").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-goal-del]");
+  if (b) { await api(`/api/goals/${b.dataset.goalDel}`, { method: "DELETE" }).catch((err) => toast(err.message)); loadGoals(); }
 });
 
 /* ---------------------------------------------------------------- shortlist */
