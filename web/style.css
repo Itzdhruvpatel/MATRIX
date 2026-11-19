@@ -307,6 +307,9 @@ button.h-row:hover { background: var(--gain-soft); }
 .sub-h { margin-top: 32px; }
 .plan { margin-top: 28px; }
 .goal { padding: 14px 4px; }
+.h-row.macro-row { grid-template-columns: 1fr auto; align-items: start; }
+.macro-row small { display: block; font-size: 0.82rem; }
+.macro-row .num { text-align: right; font-family: var(--serif); font-size: 1.3rem; }
 .goal h3 { margin: 0 0 6px; }
 .goal small { display: block; font-size: 0.85rem; }
 .goal p { margin: 6px 0; }

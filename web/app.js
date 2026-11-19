@@ -176,6 +176,29 @@ async function loadToday() {
   loadMood();
   loadPatterns();
   loadFlows();
+  loadMacro();
+}
+const MACRO = [
+  ["repo", "RBI repo rate", "%", "What RBI charges banks to borrow. Loan and FD rates follow it, usually a few months later."],
+  ["gsec10", "10-year government bond yield", "%", "What the government pays to borrow for 10 years. When it rises, bond fund values fall."],
+  ["tbill_91", "3-month treasury bill", "%", "Close to what liquid and overnight funds earn."],
+  ["fd_high", "Bank FD over 1 year (highest at big banks)", "%", "Compare your investments with this: it is close to risk-free."],
+  ["usd_inr", "One US dollar", " rupees", "A weaker rupee makes imports, fuel and foreign holidays costlier, and helps exporters like IT companies."],
+  ["vix", "India VIX (fear gauge)", "", "How much the Nifty is expected to swing over the next month. Under 15 is calm; over 25 is nervous."],
+];
+async function loadMacro() {
+  const m = await api("/api/macro");
+  $("macro-card").hidden = !m.date;
+  if (!m.date) return;
+  const v = { ...m.values };
+  // The 10-year yield: the government bond ending closest to 10 years from now.
+  const year = new Date(m.date).getFullYear() + 10;
+  const g = Object.keys(v).filter((k) => k.startsWith("gsec_")).sort((a, b) => Math.abs(+a.slice(5) - year) - Math.abs(+b.slice(5) - year))[0];
+  if (g) v.gsec10 = v[g];
+  const change = (x, unit) => x.month_ago == null ? "" : ` <small class="${sign(x.now - x.month_ago)}">${x.now === x.month_ago ? "same as" : `${x.now > x.month_ago ? "up" : "down"} from ${inr.format(x.month_ago)}${unit}`} a month ago</small>`;
+  $("macro-date").textContent = `RBI's current rates and NSE's India VIX, ${shortDate(m.date)}.`;
+  $("macro-rows").innerHTML = MACRO.filter(([k]) => v[k]).map(([k, label, unit, why]) => `<div class="h-row macro-row"><div><b>${label}</b><small class="muted">${why}</small></div>
+    <div class="num">${inr.format(v[k].now)}${unit}${change(v[k], unit)}</div></div>`).join("");
 }
 async function loadFlows() {
   const f = await api("/api/flows");

@@ -277,6 +277,20 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         total = {w: sum(r["net"] for r in rows if r["who"] == w) for w in ("FII", "DII")}
         return {"days": by_day, "total": total}
 
+    @app.get("/api/macro")
+    def macro_view(_: str = Depends(user)):
+        """Latest value of each number, and what it was about a month and a year earlier."""
+        latest = q("SELECT MAX(date) d FROM macro")[0]["d"]
+        if not latest:
+            return {"date": None, "values": {}}
+        out = {}
+        for back, label in ((0, "now"), (30, "month_ago"), (365, "year_ago")):
+            day = (date.fromisoformat(latest) - timedelta(days=back)).isoformat()
+            for r in q("SELECT m.key, m.value FROM macro m WHERE m.date=(SELECT MAX(date) FROM macro"
+                       " WHERE key=m.key AND date <= ?)", (day,)):
+                out.setdefault(r["key"], {})[label] = r["value"]
+        return {"date": latest, "values": out}
+
     tested: dict = {}
 
     @app.get("/api/backtest/patterns")
@@ -823,6 +837,10 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                             "SELECT 1 FROM pipeline_runs WHERE source='nse_fii_dii' AND date=?"
                             " AND status='ok'", (today.isoformat(),)).fetchone():
                         pipeline.load_flows(c)
+                    if now.hour >= 19 and not c.execute(
+                            "SELECT 1 FROM pipeline_runs WHERE source='rbi_nse_macro' AND date=?"
+                            " AND status='ok'", (today.isoformat(),)).fetchone():
+                        pipeline.load_macro(c)
                     # Feeds only hold the newest filings, so read them every cycle.
                     if pipeline.load_feeds(c)["rows"] + pipeline.load_insider(c)["rows"]:
                         radar.compute(c)

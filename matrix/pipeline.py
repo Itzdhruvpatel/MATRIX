@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from matrix import db, validate
 import hashlib
 
-from matrix.sources import amfi, mfapi, nse, nse_feeds, nse_flows, nse_insider
+from matrix.sources import amfi, macro, mfapi, nse, nse_feeds, nse_flows, nse_insider
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -221,6 +221,28 @@ def load_insider(conn, fetch=None, limit: int = 150, pause: float = 0.2) -> dict
                     "; ".join(failed[:3]) or None, started)
 
 
+def load_macro(conn, fetch_rbi=None, fetch_vix=None) -> dict:
+    """Today's snapshot of RBI's current rates and India VIX. Either source may fail alone."""
+    started, day, values, failed = now(), today_ist().isoformat(), {}, []
+    try:
+        values.update(macro.parse_rbi((fetch_rbi or macro.fetch_rbi)()))
+    except Exception as e:
+        failed.append(f"RBI: {e!r}")
+    try:
+        vix = (fetch_vix or macro.fetch_vix)()
+        if vix is not None:
+            values["vix"] = vix
+    except Exception as e:
+        failed.append(f"NSE VIX: {e!r}")
+    conn.executemany("INSERT INTO macro (date, key, value, source, fetched_at) VALUES (?,?,?,?,?)"
+                     " ON CONFLICT (date, key) DO UPDATE SET value=excluded.value,"
+                     " fetched_at=excluded.fetched_at",
+                     [(day, k, v, macro.SOURCE, started) for k, v in values.items()])
+    status = "ok" if values else "error"
+    return _log_run(conn, macro.SOURCE, day, status, len(values), len(failed),
+                    "; ".join(failed) or None, started)
+
+
 PRICES_BY_HOUR = 21    # NSE file appears around 18:00 IST; the daily job runs at 19:00
 NAV_MAX_HOURS = 36     # AMFI NAVs load every night around 23:00 IST
 
@@ -307,4 +329,5 @@ if __name__ == "__main__":
     print("feeds:", load_feeds(conn))
     print("FII/DII:", load_flows(conn))
     print("insider trades:", load_insider(conn))
+    print("macro:", load_macro(conn))
     print(f"Radar raised {radar.compute(conn)} alerts")

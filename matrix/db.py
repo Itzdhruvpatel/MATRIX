@@ -111,6 +111,11 @@ CREATE TABLE IF NOT EXISTS insider_trades (
     PRIMARY KEY (link, n)
 );
 
+CREATE TABLE IF NOT EXISTS macro (
+    date TEXT NOT NULL, key TEXT NOT NULL, value REAL NOT NULL, source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL, PRIMARY KEY (date, key)
+);
+
 CREATE TABLE IF NOT EXISTS fii_dii (
     date TEXT NOT NULL, who TEXT NOT NULL CHECK (who IN ('FII', 'DII')),
     buy REAL NOT NULL, sell REAL NOT NULL, net REAL NOT NULL, source TEXT NOT NULL, fetched_at TEXT NOT NULL,
