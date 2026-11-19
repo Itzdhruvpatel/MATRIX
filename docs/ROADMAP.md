@@ -1,6 +1,6 @@
 # Matrix: what's left to build
 
-Status as of 16 November 2026. Full plan: `docs/Matrix-Design.pdf`.
+Status as of 19 November 2026. Full plan: `docs/Matrix-Design.pdf`.
 
 ## 1. Done so far
 
@@ -21,6 +21,11 @@ Status as of 16 November 2026. Full plan: `docs/Matrix-Design.pdf`.
 - Two-step login with an authenticator app
 - Banner on Market today when the daily price or NAV update fails or runs late
 - The GitHub Action stops with a clear message until the `DATABASE_URL` secret exists
+- Trade planner on each stock: position size from the most you will lose, default stop and target
+- Time Machine: 10,000 runs from the stock's own past moves plus a replay on its real past, showing how often the stop or target came first
+- Daily chart patterns (1-year high, 200-day average crosses, trading jumps, price gaps) on Market today and as Info alerts
+- Practice money rules that block practice buys over your cash, one-stock or loss-per-trade limits, or with no stop
+- Alerts when a stock closes through a stop or target you saved
 
 Effort key: S = a day or less, M = a few days, L = a week or more.
 
@@ -88,6 +93,8 @@ Effort key: S = a day or less, M = a few days, L = a week or more.
 - A demat CAS (NSDL, CDSL) has no purchase prices, so those holdings count from the statement date. A mutual fund CAS must cover the period from your first purchase
 - The forecast model is not better than a simple guess yet (see the Ratings tab)
 - The `dev` test login should be removed once you create your own
+- Saved stops and targets are in rupees; after a split or bonus they need to be set again
+- Chart patterns and the Time Machine use one year of prices; more history would make both more reliable
 - Daily updates run only while the server is running
 - All data is in one SQLite file with no automatic backup yet
 

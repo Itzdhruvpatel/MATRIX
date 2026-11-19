@@ -10,6 +10,7 @@ This is a research tool. It does not give investment advice, place trades, or gu
 - Plain-language summary of the day, rising vs falling stocks, and a heatmap of the 120 most traded stocks
 - Gainers, losers, unusual moves over 20%, and a data health panel
 - A red banner when the daily price or NAV update fails or runs late, with the reason
+- Chart patterns from the last trading day: new 1-year high, crossing the 200-day average up or down, trading at 3 times a normal day, and opening 3% or more away from the last close. Facts about the price, not signals
 
 **Matrix Score (Ratings tab)**
 - 0 to 100 score for every liquid NSE stock (about 1,500), ranked on momentum, trend, calm, worst fall and ease of trading
@@ -28,6 +29,8 @@ This is a research tool. It does not give investment advice, place trades, or gu
 - Price rules: exchange surveillance, falls over 20% in a month, one-day moves over 20%, pump-and-dump patterns, near a one-year low
 - Official NSE filings: auditor resignations, defaults, insolvency, fraud or regulator action, rating downgrades, top executive exits, promoter pledges, insider trades
 - Large bulk and block deals
+- Chart patterns as Info alerts on the stocks you own or follow
+- Your own stops and targets: a Warning when a stock closes below the stop you saved, Info when it closes above your target
 - Every alert says what happened, why it matters, and links to the filing
 
 **Market mood**
@@ -44,6 +47,12 @@ This is a research tool. It does not give investment advice, place trades, or gu
 - Likely range: how far the stock moved over any 20 trading days in the past year, 8 times out of 10
 - Matrix saves each forecast once and never changes it. The Ratings tab grades them against what happened, next to the simple guess the model has to beat. As of 16 November 2026, on 6,079 graded forecasts (all re-created from past data) the model was right 49 times in 100; always guessing "will not beat the Nifty" was right 59 times in 100
 
+**Trade planner and Time Machine (stock detail)**
+- Type the price, a stop and a target (or take the defaults: stop two typical daily moves below, target twice as far above) and the most you will lose. Matrix works out how many shares fit, and warns when that is over 10% of your money
+- Time Machine (owner only): 10,000 made-up runs of the next 20 trading days from the stock's own daily moves over the past year, with the trend taken out, show how often the target or the stop came first. The same plan is also replayed on every past day
+- Matrix only has closing prices, so a run counts the close that went through the level, which is often worse than the stop itself. Costs and tax are left out
+- Save the stop and target to get alerts and to unlock practice buys
+
 **Shortlist (owner only)**
 - Pick plain rules (minimum score, no Danger or Warning alerts, daily trading, calm price, uptrend, small worst fall) and see which stocks pass, with the reasons
 - Replays the same rules on past months and compares the next month with owning the Nifty
@@ -54,6 +63,7 @@ This is a research tool. It does not give investment advice, place trades, or gu
 - Tax if you sold today: short-term and long-term gains matched first-in, first-out, with the yearly tax-free limit (rules from the July 2024 Budget)
 - Investment journal: why you bought, when you would sell, and a review date
 - Practice money: a separate pretend portfolio for trying ideas
+- Practice rules: set starting practice money, the most in one stock and the most lost per trade. Matrix then refuses any practice buy that costs more than the cash left, breaks the one-stock limit, has no stop saved, or would lose more than the limit at the stop
 
 **Compare**
 - Up to 4 stocks or funds on one chart, all starting at 100, with returns and risk side by side
@@ -106,6 +116,7 @@ matrix/insights.py market mood, what-if scenarios, tax view
 matrix/ledger.py  Prediction Ledger (score and forecast track record)
 matrix/forecast.py 20-day forecast model
 matrix/screener.py Shortlist rules
+matrix/planner.py trade planner, Time Machine, stop and target alerts
 matrix/pipeline.py  fetch, validate, store
 matrix/db.py      schema (SQLite or PostgreSQL)
 matrix/auth.py    passwords, sessions, two-step codes
