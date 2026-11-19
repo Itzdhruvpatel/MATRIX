@@ -1,5 +1,6 @@
 """Fetch -> validate -> store. Run: python -m matrix.pipeline [--days N]"""
 import argparse
+import time
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
 
@@ -247,11 +248,28 @@ def run(conn: sqlite3.Connection, days: int = 1) -> list[dict]:
     return results
 
 
+def load_history(conn, since: date, fetch=nse.download, pause: float = 0.3) -> dict:
+    """Every weekday from `since` to today that has no stock file loaded yet (safe to rerun)."""
+    done = {r[0] for r in conn.execute("SELECT DISTINCT date FROM pipeline_runs WHERE source=?"
+                                       " AND status IN ('ok', 'no_data')", (nse.SOURCE,))}
+    day, counts = since, {"ok": 0, "no_data": 0, "error": 0}
+    while day <= today_ist():
+        if day.weekday() < 5 and day.isoformat() not in done:
+            counts[load_stocks(conn, day, fetch)["status"]] += 1
+            time.sleep(pause)  # be polite to NSE's servers
+        day += timedelta(days=1)
+    return counts
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Load market data into Matrix")
     ap.add_argument("--days", type=int, default=1, help="trading days of stock data to load")
+    ap.add_argument("--since", help="load every missing day from this date (like 2021-11-01), then stop")
     args = ap.parse_args()
     conn = db.connect()
+    if args.since:
+        print("history:", load_history(conn, date.fromisoformat(args.since)))
+        raise SystemExit
     for r in run(conn, args.days):
         print(r)
     from matrix import forecast, radar, score

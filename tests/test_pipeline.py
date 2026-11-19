@@ -126,3 +126,18 @@ def test_data_problems_spots_failed_and_late_updates():
                 if p["what"] == "navs"]
     assert [p for p in pipeline.data_problems(conn, datetime(2026, 11, 19, 12, 0, tzinfo=pipeline.IST))
             if p["what"] == "navs"]
+
+
+def test_load_history_fills_only_missing_days(monkeypatch):
+    conn = db.connect(":memory:")
+    asked = []
+    monkeypatch.setattr(pipeline, "today_ist", lambda: date(2026, 11, 13))
+
+    def fetch(d):
+        asked.append(d)
+        return None  # a holiday each time is enough to test the bookkeeping
+
+    r = pipeline.load_history(conn, date(2026, 11, 2), fetch, pause=0)
+    assert r == {"ok": 0, "no_data": 10, "error": 0} and len(asked) == 10  # weekdays only
+    asked.clear()
+    assert pipeline.load_history(conn, date(2026, 11, 2), fetch, pause=0)["no_data"] == 0 and not asked

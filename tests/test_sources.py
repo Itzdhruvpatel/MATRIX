@@ -71,3 +71,21 @@ def test_amfi_parse_old_six_column_format():
             "1;INF1;-;X Liquid Fund - Direct Plan - Growth;1000.5;13-Nov-2026\n")
     (r,) = amfi.parse(text)
     assert r["nav"] == 1000.5 and r["plan"] is None and r["amc"] == "X Mutual Fund"
+
+
+OLD_CSV = """SYMBOL,SERIES,OPEN,HIGH,LOW,CLOSE,LAST,PREVCLOSE,TOTTRDQTY,TOTTRDVAL,TIMESTAMP,TOTALTRADES,ISIN,
+182D021123,TB,96.77,96.77,96.77,96.77,96.77,96.47,1000,96770,01-JUN-2023,1,IN002023Y052,
+TCS,EQ,3314,3340,3297.5,3324,3325,3289.5,1177314,3915200315.1,01-JUN-2023,107605,INE467B01029,
+"""
+
+
+def test_nse_old_format_before_july_2024():
+    assert nse.url(date(2023, 6, 1)).endswith("/historical/EQUITIES/2023/JUN/cm01JUN2023bhav.csv.zip")
+    assert "BhavCopy_NSE_CM" in nse.url(date(2024, 7, 8))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("cm01JUN2023bhav.csv", OLD_CSV)
+    [r] = nse.parse(buf.getvalue())
+    assert r == {"date": "2023-06-01", "symbol": "TCS", "isin": "INE467B01029", "name": None, "series": "EQ",
+                 "open": 3314.0, "high": 3340.0, "low": 3297.5, "close": 3324.0, "prev_close": 3289.5,
+                 "volume": 1177314, "value": 3915200315.1, "trades": 107605}
