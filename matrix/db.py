@@ -105,6 +105,12 @@ CREATE TABLE IF NOT EXISTS levels (
     PRIMARY KEY (username, symbol)
 );
 
+CREATE TABLE IF NOT EXISTS fii_dii (
+    date TEXT NOT NULL, who TEXT NOT NULL CHECK (who IN ('FII', 'DII')),
+    buy REAL NOT NULL, sell REAL NOT NULL, net REAL NOT NULL, source TEXT NOT NULL, fetched_at TEXT NOT NULL,
+    PRIMARY KEY (date, who)
+);
+
 CREATE TABLE IF NOT EXISTS goals (
     id INTEGER PRIMARY KEY, username TEXT NOT NULL, name TEXT NOT NULL, target REAL NOT NULL,
     target_date TEXT NOT NULL, saved REAL NOT NULL, monthly REAL NOT NULL, equity_share REAL NOT NULL,

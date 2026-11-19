@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from matrix import db, validate
 import hashlib
 
-from matrix.sources import amfi, mfapi, nse, nse_feeds
+from matrix.sources import amfi, mfapi, nse, nse_feeds, nse_flows
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -175,6 +175,22 @@ def load_feeds(conn: sqlite3.Connection, fetch_rss=None, fetch_deals=None) -> di
                     "; ".join(failed) or None, started)
 
 
+def load_flows(conn, fetch=None) -> dict:
+    """Today's FII and DII cash-market buying and selling (Rs crore), kept day by day."""
+    started = now()
+    try:
+        rows = nse_flows.parse((fetch or nse_flows.fetch)())
+    except Exception as e:
+        return _log_run(conn, nse_flows.SOURCE, today_ist().isoformat(), "error", 0, 0, repr(e), started)
+    for r in rows:
+        conn.execute("INSERT INTO fii_dii (date, who, buy, sell, net, source, fetched_at) VALUES"
+                     " (?,?,?,?,?,?,?) ON CONFLICT (date, who) DO UPDATE SET buy=excluded.buy,"
+                     " sell=excluded.sell, net=excluded.net, fetched_at=excluded.fetched_at",
+                     (r["date"], r["who"], r["buy"], r["sell"], r["net"], nse_flows.SOURCE, started))
+    return _log_run(conn, nse_flows.SOURCE, rows[0]["date"] if rows else today_ist().isoformat(),
+                    "ok" if rows else "no_data", len(rows), 0, None, started)
+
+
 PRICES_BY_HOUR = 21    # NSE file appears around 18:00 IST; the daily job runs at 19:00
 NAV_MAX_HOURS = 36     # AMFI NAVs load every night around 23:00 IST
 
@@ -242,4 +258,5 @@ if __name__ == "__main__":
     print(f"Scored {score.compute(conn)} stocks")
     print(f"Forecast {forecast.compute(conn)} stocks")
     print("feeds:", load_feeds(conn))
+    print("FII/DII:", load_flows(conn))
     print(f"Radar raised {radar.compute(conn)} alerts")

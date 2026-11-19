@@ -267,6 +267,16 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                 "groups": {k: v[:12] for k, v in groups.items()},
                 "counts": {k: len(v) for k, v in groups.items()}}
 
+    @app.get("/api/flows")
+    def flows(_: str = Depends(user)):
+        """FII and DII net buying (Rs crore) for the last 20 days Matrix has, newest first."""
+        days = [r["date"] for r in q("SELECT DISTINCT date FROM fii_dii ORDER BY date DESC LIMIT 20")]
+        marks = ",".join("?" * len(days))
+        rows = q(f"SELECT date, who, buy, sell, net FROM fii_dii WHERE date IN ({marks})", days) if days else []
+        by_day = [{"date": d, **{r["who"]: r for r in rows if r["date"] == d}} for d in days]
+        total = {w: sum(r["net"] for r in rows if r["who"] == w) for w in ("FII", "DII")}
+        return {"days": by_day, "total": total}
+
     tested: dict = {}
 
     @app.get("/api/backtest/patterns")
@@ -808,6 +818,11 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                             score.compute(c)
                             forecast.compute(c)
                             radar.compute(c)  # price alerts and chart patterns for the new day
+                    # NSE posts FII/DII figures in the evening; the API only has the latest day.
+                    if today.weekday() < 5 and now.hour >= 19 and not c.execute(
+                            "SELECT 1 FROM pipeline_runs WHERE source='nse_fii_dii' AND date=?"
+                            " AND status='ok'", (today.isoformat(),)).fetchone():
+                        pipeline.load_flows(c)
                     # Feeds only hold the newest filings, so read them every cycle.
                     if pipeline.load_feeds(c)["rows"]:
                         radar.compute(c)

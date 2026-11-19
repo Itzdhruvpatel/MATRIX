@@ -175,6 +175,19 @@ async function loadToday() {
   loadHealth();
   loadMood();
   loadPatterns();
+  loadFlows();
+}
+async function loadFlows() {
+  const f = await api("/api/flows");
+  $("flows-card").hidden = !f.days.length;
+  if (!f.days.length) return;
+  const d = f.days[0], cr = (v) => `Rs ${whole.format(Math.abs(v))} crore`;
+  const said = (who, label) => d[who] ? `${label} ${d[who].net >= 0 ? "bought" : "sold"} <b>${cr(d[who].net)}</b> more than they ${d[who].net >= 0 ? "sold" : "bought"}` : "";
+  $("flows-line").innerHTML = `On ${shortDate(d.date)}, ${[said("FII", "foreign investors"), said("DII", "Indian funds")].filter(Boolean).join(", and ")}.` +
+    (f.days.length > 1 ? ` Over the last ${f.days.length} days Matrix has: foreign ${f.total.FII >= 0 ? "net buying" : "net selling"} of ${cr(f.total.FII)}, Indian funds ${f.total.DII >= 0 ? "net buying" : "net selling"} of ${cr(f.total.DII)}.` : "");
+  const cell = (r) => r ? `<td class="${sign(r.net)}">${r.net > 0 ? "+" : ""}${whole.format(r.net)}</td>` : "<td>-</td>";
+  $("flows-table").innerHTML = `<tr><th style="text-align:left">Day</th><th>Foreign (FII) net</th><th>Indian funds (DII) net</th></tr>` +
+    f.days.map((x) => `<tr><td>${shortDate(x.date)}</td>${cell(x.FII)}${cell(x.DII)}</tr>`).join("");
 }
 const PATTERN_NAMES = { high_52w: "New 1-year high", above_200: "Crossed above 200-day average", below_200: "Fell below 200-day average", volume_surge: "Trading jumped", gap_up: "Opened higher", gap_down: "Opened lower" };
 let patterns = null, patternPick = "high_52w";
