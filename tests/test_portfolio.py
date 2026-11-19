@@ -108,3 +108,22 @@ def test_practice_limits_block_rule_breaking_buys(conn):
     # CSV import into practice money follows the same rules.
     r = portfolio.import_csv(conn, "u", "type,code,side,date,quantity,price\nstock,INFY,buy,2025-11-13,1,1500", "paper")
     assert "set a stop for INFY first" in r["errors"][0]
+
+
+def test_cooling_off_for_hot_stocks_with_a_fresh_plan(conn):
+    paper = {**buy("TCS", 1, 4000), "book": "paper"}
+    conn.execute("INSERT INTO practice_limits VALUES ('u', 1000000, 0.10, 0.01)")
+    closes = (3000, 3100, 3300, 3500, 3800)  # then 4,000 on the 13th: +33% in 5 days
+    for i, close in enumerate(closes):
+        conn.execute("INSERT INTO stock_prices (symbol, date, name, series, close, prev_close, source,"
+                     " fetched_at) VALUES ('TCS', ?, 'TCS LTD', 'EQ', ?, ?, 't', 't')",
+                     (f"2026-11-{i + 6:02d}", close, closes[max(i - 1, 0)]))
+    conn.execute("UPDATE stock_prices SET prev_close=3800 WHERE symbol='TCS' AND date='2026-11-13'")
+    conn.execute("INSERT INTO levels (username, symbol, stop, set_at) VALUES ('u', 'TCS', 3900, CURRENT_TIMESTAMP)")
+    assert "cooling off: TCS moved" in portfolio.add(conn, "u", paper)
+    conn.execute("UPDATE levels SET set_at='2026-01-01 09:00:00'")  # plan made long ago
+    assert portfolio.add(conn, "u", paper) is None
+    assert portfolio.hot_reason(conn, "INFY") is None
+    conn.execute("INSERT INTO alerts (symbol, date, rule, level, title) VALUES ('INFY', '2026-11-13',"
+                 " 'auditor_exit', 'danger', 'The company''s auditor resigned')")
+    assert "auditor resigned" in portfolio.hot_reason(conn, "INFY")

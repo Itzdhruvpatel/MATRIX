@@ -2,7 +2,7 @@
 import csv
 import io
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 from matrix import analytics
 
@@ -83,6 +83,29 @@ def practice_cash(conn, username: str, capital: float) -> float:
     return capital - (r[0] or 0)
 
 
+COOL_OFF = timedelta(hours=24)
+HOT_MOVE = 0.10  # a 10% move in a week is when people buy in a rush
+
+
+def _utc(text: str) -> datetime:
+    t = datetime.fromisoformat(str(text).replace(" ", "T"))
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)  # SQLite CURRENT_TIMESTAMP is UTC
+
+
+def hot_reason(conn, code: str) -> str | None:
+    """Why a stock is one to slow down on: a big recent move, or a serious alert."""
+    a = conn.execute("SELECT title FROM alerts WHERE symbol=? AND level IN ('danger', 'warning')"
+                     " LIMIT 1", (code,)).fetchone()
+    if a:
+        return f"has an alert ({a[0]})"
+    rows = [dict(r) for r in conn.execute("SELECT date, close, prev_close FROM stock_prices WHERE symbol=?"
+                                          " ORDER BY date DESC LIMIT 6", (code,))][::-1]
+    closes = [v for _, v in analytics.adjusted_series(rows)]
+    if len(closes) == 6 and abs(closes[-1] / closes[0] - 1) >= HOT_MOVE:
+        return f"moved {closes[-1] / closes[0] - 1:+.0%} in 5 trading days"
+    return None
+
+
 def limit_error(conn, username: str, tx: dict, held: dict, cash: float, limits: dict) -> str | None:
     """Blocks a practice buy that breaks the user's own rules: cash, size, and loss at the stop."""
     if tx["side"] != "buy":
@@ -97,9 +120,14 @@ def limit_error(conn, username: str, tx: dict, held: dict, cash: float, limits: 
     if after > limits["max_stock_pct"] * cap + 0.005:
         return (f"{code} would be {after / cap:.0%} of your practice money, above your "
                 f"{limits['max_stock_pct']:.0%} limit for one stock")
-    r = conn.execute("SELECT stop FROM levels WHERE username=? AND symbol=?", (username, code)).fetchone()
+    r = conn.execute("SELECT stop, set_at FROM levels WHERE username=? AND symbol=?",
+                     (username, code)).fetchone()
     if not r:
         return f"set a stop for {code} first: open the stock and use Plan a trade"
+    hot = hot_reason(conn, code)
+    if hot and r[1] and datetime.now(timezone.utc) - _utc(r[1]) < COOL_OFF:
+        return (f"cooling off: {code} {hot}. Your plan for it is less than a day old, so wait until"
+                " tomorrow and check it still makes sense")
     if r[0] >= tx["price"]:
         return f"your stop for {code} (Rs {r[0]:,.2f}) is not below the price"
     loss, allowed = tx["quantity"] * (tx["price"] - r[0]), limits["max_loss_pct"] * cap
