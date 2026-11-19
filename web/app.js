@@ -174,7 +174,22 @@ async function loadToday() {
     : `<li class="empty">Nothing unusual today.</li>`;
   loadHealth();
   loadMood();
+  loadPatterns();
 }
+const PATTERN_NAMES = { high_52w: "New 1-year high", above_200: "Crossed above 200-day average", below_200: "Fell below 200-day average", volume_surge: "Trading jumped", gap_up: "Opened higher", gap_down: "Opened lower" };
+let patterns = null, patternPick = "high_52w";
+async function loadPatterns() {
+  patterns = await api("/api/scanner");
+  showPatterns(patternPick);
+}
+function showPatterns(rule) {
+  patternPick = rule;
+  $("pattern-pick").innerHTML = Object.entries(PATTERN_NAMES).map(([k, v]) => `<button class="ghost small${k === rule ? " on" : ""}" data-pattern="${k}" aria-pressed="${k === rule}">${v} (${patterns.counts[k] ?? 0})</button>`).join("");
+  const list = patterns.groups[rule] ?? [];
+  $("patterns").innerHTML = list.map(stockRow).join("") +
+    (patterns.counts[rule] > list.length ? `<li class="empty">Showing the ${list.length} most traded of ${patterns.counts[rule]}.</li>` : "") || `<li class="empty">No stock today.</li>`;
+}
+$("pattern-pick").addEventListener("click", (e) => { const b = e.target.closest("[data-pattern]"); if (b) showPatterns(b.dataset.pattern); });
 async function loadHealth() {
   const h = await api("/api/health");
   const probs = h.problems ?? [];

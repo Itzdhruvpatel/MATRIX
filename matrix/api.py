@@ -253,6 +253,20 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                        " AND severity='flagged' ORDER BY key LIMIT 50", (latest,)),
         }
 
+    @app.get("/api/scanner")
+    def scanner(min_traded_cr: float = 10, _: str = Depends(user)):
+        """Today's chart patterns, grouped, busiest stocks first (the radar finds them each day)."""
+        marks = ",".join("?" * len(radar.PATTERNS))
+        rows = q(f"SELECT a.rule, a.symbol, a.title, p.name, p.close, p.value,"
+                 f" ROUND((p.close / p.prev_close - 1) * 100, 2) AS change_pct FROM alerts a"
+                 f" JOIN stock_prices p ON p.symbol=a.symbol AND p.date=a.date"
+                 f" WHERE a.rule IN ({marks}) AND p.value >= ? ORDER BY p.value DESC",
+                 (*radar.PATTERNS, min_traded_cr * 1e7))
+        groups = {rule: [r for r in rows if r["rule"] == rule] for rule in radar.PATTERNS}
+        return {"date": q("SELECT MAX(date) d FROM stock_prices")[0]["d"],
+                "groups": {k: v[:12] for k, v in groups.items()},
+                "counts": {k: len(v) for k, v in groups.items()}}
+
     @app.get("/api/stocks/search")
     def stock_search(query: str, _: str = Depends(user)):
         like = f"%{query.upper()}%"
@@ -684,6 +698,7 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                         if pipeline.load_stocks(c, today)["status"] == "ok":
                             score.compute(c)
                             forecast.compute(c)
+                            radar.compute(c)  # price alerts and chart patterns for the new day
                     # Feeds only hold the newest filings, so read them every cycle.
                     if pipeline.load_feeds(c)["rows"]:
                         radar.compute(c)

@@ -96,3 +96,35 @@ def test_compute_stores_alerts_and_replaces_old_ones():
     assert n == 2
     got = {r["rule"] for r in conn.execute("SELECT rule FROM alerts WHERE symbol='RISKY'")}
     assert got == {"surveillance", "auditor_exit"}
+
+
+def test_patterns_new_high_cross_volume_and_gap():
+    assert "high_52w" in rules(radar.pattern_alerts(rows(260, 0.001)))
+    assert radar.pattern_alerts(rows(260, 0.001, value=1e6)) == []  # too thinly traded
+    # Falls for 230 days, then jumps above the 200-day average on the last day.
+    r = rows(230, -0.002) + rows(30, 0.0, start=rows(230, -0.002)[-1]["close"])
+    r[-1] = {**r[-1], "close": r[-2]["close"] * 1.2, "value": 2e9, "open": r[-2]["close"] * 1.05}
+    got = rules(radar.pattern_alerts(r))
+    assert {"above_200", "volume_surge", "gap_up"} <= set(got) and set(got.values()) == {"info"}
+    r = rows(260, 0.001)
+    r[-1] = {**r[-1], "close": r[-2]["close"] * 0.8}
+    assert "below_200" in rules(radar.pattern_alerts(r))
+
+
+def test_scanner_endpoint_groups_todays_patterns():
+    from fastapi.testclient import TestClient
+    from matrix import api, auth
+    conn = db.connect(":memory:")
+    for sym, value in (("BUSY", 5e8), ("SMALL", 2e7)):
+        for r in rows(260, 0.001, value=value):
+            conn.execute("INSERT INTO stock_prices (symbol, date, name, series, close, prev_close, high,"
+                         " value, source, fetched_at) VALUES (?,?,?,?,?,?,?,?,'t','t')",
+                         (sym, r["date"], sym, r["series"], r["close"], r["prev_close"], r["high"], r["value"]))
+    radar.compute(conn)
+    auth.set_user(conn, "owner", "correct-horse-battery")
+    c = TestClient(api.create_app(conn, "s"))
+    c.post("/api/login", json={"username": "owner", "password": "correct-horse-battery"})
+    s = c.get("/api/scanner").json()
+    assert [x["symbol"] for x in s["groups"]["high_52w"]] == ["BUSY"] and s["counts"]["high_52w"] == 1
+    s = c.get("/api/scanner", params={"min_traded_cr": 1}).json()
+    assert s["counts"]["high_52w"] == 2
