@@ -15,8 +15,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from matrix import (analytics, auth, backup, cas, db, forecast, insights, ledger, pipeline,
-                    planner, portfolio, radar, score, screener)
+from matrix import (analytics, auth, backtest, backup, cas, db, forecast, insights, ledger,
+                    pipeline, planner, portfolio, radar, score, screener)
 
 ROOT = Path(__file__).resolve().parent.parent
 COOKIE = "matrix_session"
@@ -266,6 +266,18 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         return {"date": q("SELECT MAX(date) d FROM stock_prices")[0]["d"],
                 "groups": {k: v[:12] for k, v in groups.items()},
                 "counts": {k: len(v) for k, v in groups.items()}}
+
+    tested: dict = {}
+
+    @app.get("/api/backtest/patterns")
+    def pattern_backtest(_: str = Depends(user)):
+        """Redone once per new price day. It holds the lock for a few seconds that first time;
+        precompute it in the daily job if more history makes it slow."""
+        with lock:
+            key = conn.execute("SELECT MAX(date) FROM stock_prices").fetchone()[0]
+            if tested.get("key") != key:
+                tested.update(key=key, result=backtest.pattern_history(conn))
+            return tested["result"]
 
     @app.get("/api/stocks/search")
     def stock_search(query: str, _: str = Depends(user)):

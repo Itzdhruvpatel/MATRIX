@@ -101,44 +101,57 @@ PATTERNS = ("high_52w", "above_200", "below_200", "volume_surge", "gap_up", "gap
 PATTERN_MIN_VALUE = 1e7  # Rs 1 crore on a typical day; thinner stocks make noisy patterns
 
 
+def patterns_at(rows: list[dict], closes: list[float], i: int) -> dict[str, float | None]:
+    """Patterns on day i ({rule: size}), from rows and adjusted closes up to and including day i."""
+    if i < 50:
+        return {}
+    typical = statistics.median(r["value"] or 0 for r in rows[i - 50:i])
+    if typical < PATTERN_MIN_VALUE:
+        return {}
+    day, found = rows[i], {}
+    if i >= 239 and closes[i] > max(closes[max(0, i - 250):i]):
+        found["high_52w"] = None
+    if i >= 200:
+        now, before = sum(closes[i - 199:i + 1]) / 200, sum(closes[i - 200:i]) / 200
+        if closes[i] > now and closes[i - 1] <= before:
+            found["above_200"] = None
+        elif closes[i] < now and closes[i - 1] >= before:
+            found["below_200"] = None
+    if (day["value"] or 0) >= 3 * typical:
+        found["volume_surge"] = day["value"] / typical
+    if day.get("open") and day["prev_close"]:
+        gap = day["open"] / day["prev_close"] - 1
+        if abs(gap) >= 0.03:
+            found["gap_up" if gap > 0 else "gap_down"] = gap
+    return found
+
+
+PATTERN_TEXT = {
+    "high_52w": ("Closed at its highest price in a year",
+                 "Some investors read a new high as strength. It also means anyone buying now pays more "
+                 "than anyone did all year."),
+    "above_200": ("Crossed above its 200-day average price",
+                  "Traders watch this line as a hint that the long-term direction may be turning up. "
+                  "Prices often cross back within weeks."),
+    "below_200": ("Fell below its 200-day average price",
+                  "Traders watch this line as a hint that the long-term direction may be turning down. "
+                  "Prices often cross back within weeks."),
+    "volume_surge": ("Trading jumped to {:.0f} times a normal day",
+                     "Far more money changed hands than usual. There is often news behind it; find out what."),
+    "gap_up": ("Opened {:+.0%} away from the last close",
+               "Something changed between the two sessions, often results or news. Check what "
+               "before reading anything into it."),
+}
+PATTERN_TEXT["gap_down"] = PATTERN_TEXT["gap_up"]
+
+
 def pattern_alerts(rows: list[dict]) -> list[dict]:
     """Chart patterns on the latest day. Facts about the price, never a signal (level: info)."""
-    if len(rows) < 51:
-        return []
-    last, out = rows[-1], []
-    typical = statistics.median(r["value"] or 0 for r in rows[-51:-1])
-    if typical < PATTERN_MIN_VALUE:
-        return []
-
-    def add(rule, title, detail):
-        out.append({"date": last["date"], "rule": rule, "level": "info", "title": title,
-                    "detail": detail, "link": None, "source": "NSE daily prices"})
-
     closes = [v for _, v in analytics.adjusted_series(rows)]
-    if len(closes) >= 240 and closes[-1] > max(closes[-251:-1]):
-        add("high_52w", "Closed at its highest price in a year",
-            "Some investors read a new high as strength. It also means anyone buying now pays more "
-            "than anyone did all year.")
-    if len(closes) >= 201:
-        now, before = sum(closes[-200:]) / 200, sum(closes[-201:-1]) / 200
-        if closes[-1] > now and closes[-2] <= before:
-            add("above_200", "Crossed above its 200-day average price",
-                "Traders watch this line as a hint that the long-term direction may be turning up. "
-                "Prices often cross back within weeks.")
-        elif closes[-1] < now and closes[-2] >= before:
-            add("below_200", "Fell below its 200-day average price",
-                "Traders watch this line as a hint that the long-term direction may be turning down. "
-                "Prices often cross back within weeks.")
-    if (last["value"] or 0) >= 3 * typical:
-        add("volume_surge", f"Trading jumped to {last['value'] / typical:.0f} times a normal day",
-            "Far more money changed hands than usual. There is often news behind it; find out what.")
-    if last.get("open") and last["prev_close"]:
-        gap = last["open"] / last["prev_close"] - 1
-        if abs(gap) >= 0.03:
-            add("gap_up" if gap > 0 else "gap_down", f"Opened {gap:+.0%} away from the last close",
-                "Something changed between the two sessions, often results or news. Check what "
-                "before reading anything into it.")
-    return out
+    return [{"date": rows[-1]["date"], "rule": rule, "level": "info",
+             "title": PATTERN_TEXT[rule][0].format(size), "detail": PATTERN_TEXT[rule][1],
+             "link": None, "source": "NSE daily prices"}
+            for rule, size in patterns_at(rows, closes, len(rows) - 1).items()]
 
 
 def announcement_alert(a: dict) -> dict | None:

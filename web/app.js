@@ -178,13 +178,27 @@ async function loadToday() {
 }
 const PATTERN_NAMES = { high_52w: "New 1-year high", above_200: "Crossed above 200-day average", below_200: "Fell below 200-day average", volume_surge: "Trading jumped", gap_up: "Opened higher", gap_down: "Opened lower" };
 let patterns = null, patternPick = "high_52w";
+let patternTest = null;
 async function loadPatterns() {
   patterns = await api("/api/scanner");
   showPatterns(patternPick);
+  if (!patternTest) $("pattern-test").textContent = "Checking how each pattern did in the past...";
+  patternTest = await api("/api/backtest/patterns");
+  showPatterns(patternPick);
+}
+// What happened after this pattern in the past, in one honest paragraph.
+function patternVerdict(t, rule) {
+  const r = t.patterns[rule], any = t.patterns.any_day;
+  if (!r.events) return "Not enough price history yet to test this pattern (it needs about a year before each day, plus a month after).";
+  const n = (f) => `<b>${fracText(f)}</b>`;
+  return `Tested on every liquid stock from ${shortDate(t.from)} to ${shortDate(t.to)}: after this pattern (${whole.format(r.events)} times), stocks moved ${n(r.avg)} on average over the next ${t.horizon} trading days, and ${fracText(r.median)} in the usual case. The Nifty moved ${fracText(r.market_avg)} over the same days. They beat the Nifty ${Math.round(r.beat_share * 100)} times in 100. ` +
+    `After costs (${(t.cost * 100).toFixed(1)}%) and ${Math.round(t.tax * 100)}% short-term tax: ${n(r.avg_after_costs)} a trade. A random liquid stock on a random day: ${fracText(any.avg_after_costs)} after costs, beating the Nifty ${Math.round(any.beat_share * 100)} times in 100. ` +
+    "One year is a short test, the same stock can appear many times, and a pattern that worked for a year often stops working.";
 }
 function showPatterns(rule) {
   patternPick = rule;
   $("pattern-pick").innerHTML = Object.entries(PATTERN_NAMES).map(([k, v]) => `<button class="ghost small${k === rule ? " on" : ""}" data-pattern="${k}" aria-pressed="${k === rule}">${v} (${patterns.counts[k] ?? 0})</button>`).join("");
+  if (patternTest) $("pattern-test").innerHTML = patternVerdict(patternTest, rule);
   const list = patterns.groups[rule] ?? [];
   $("patterns").innerHTML = list.map(stockRow).join("") +
     (patterns.counts[rule] > list.length ? `<li class="empty">Showing the ${list.length} most traded of ${patterns.counts[rule]}.</li>` : "") || `<li class="empty">No stock today.</li>`;
