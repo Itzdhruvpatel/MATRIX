@@ -394,6 +394,19 @@ fund,122639,buy,2025-06-02,120,81.5</pre>
           <ul id="goal-list" class="list"></ul>
         </section>
       </section>
+      <form id="bond-form" class="card form">
+        <h2>Bond calculator</h2>
+        <p class="hint">For a government security, SDL or company bond with a fixed interest rate. Prices are per Rs 100 of face value, as brokers and RBI Retail Direct show them.</p>
+        <div class="row">
+          <label>Interest rate it pays (% a year) <input name="coupon" type="number" step="any" min="0" max="99" required placeholder="Example: 7.1"></label>
+          <label>Years left until it ends <input name="years" type="number" step="any" min="0.1" max="50" required placeholder="Example: 10"></label>
+          <label>Price (Rs per 100) <input name="price" type="number" step="any" min="1" required placeholder="Example: 98.5"></label>
+        </div>
+        <label>Pays interest <select name="per_year"><option value="2" selected>Twice a year</option><option value="1">Once a year</option><option value="4">Every 3 months</option><option value="12">Every month</option></select></label>
+        <div id="bond-out" class="simple"></div>
+        <p id="bond-msg" class="error" role="status"></p>
+        <button type="submit" class="primary">Work it out</button>
+      </form>
     </main>
 
     <!-- ACCOUNT -->

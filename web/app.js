@@ -284,6 +284,19 @@ $("goal-list").addEventListener("click", async (e) => {
   if (b) { await api(`/api/goals/${b.dataset.goalDel}`, { method: "DELETE" }).catch((err) => toast(err.message)); loadGoals(); }
 });
 
+$("bond-form").addEventListener("submit", async (e) => {
+  e.preventDefault(); const f = e.target.elements; $("bond-msg").textContent = "";
+  try {
+    const b = await api(`/api/bond?${new URLSearchParams({ coupon: f.coupon.value / 100, years: f.years.value, price: f.price.value, per_year: f.per_year.value })}`);
+    const m = b.rate_moves, move = (k) => `<b>${pct1(Math.abs(m[k]))}</b>`;
+    $("bond-out").innerHTML = `<h3>What it really pays</h3>
+      <p>Held to the end, with every payment made, it returns <b>${(b.ytm * 100).toFixed(2)}% a year</b> (yield to maturity). On the price you pay, the interest alone is ${(b.current_yield * 100).toFixed(2)}% a year.</p>
+      <p>For every Rs 100 of face value you receive ${rupees(b.received)} over ${b.payments} payments, including the Rs 100 back at the end.</p>
+      <p>If interest rates rise by 1%, its price falls about ${move("+1%")} (by 2%: ${move("+2%")}). If rates fall by 1%, it rises about ${move("-1%")}. Longer bonds swing more.</p>
+      <p class="hint">Interest is taxed at your income tax rate. Check the credit rating too: a higher yield on a company bond usually means a higher chance it does not pay. Matrix does not have rating data yet.</p>`;
+  } catch (err) { $("bond-msg").textContent = err.message; }
+});
+
 /* ---------------------------------------------------------------- shortlist */
 async function loadShortlist() {
   const f = $("sl-form"), params = new URLSearchParams({ min_score: f.min_score.value, min_traded_cr: f.min_traded_cr.value });

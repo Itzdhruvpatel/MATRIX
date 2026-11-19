@@ -15,8 +15,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from matrix import (analytics, auth, backtest, backup, cas, db, forecast, goals, insights,
-                    ledger, pipeline, planner, portfolio, radar, score, screener)
+from matrix import (analytics, auth, backtest, backup, bonds, cas, db, forecast, goals,
+                    insights, ledger, pipeline, planner, portfolio, radar, score, screener)
 
 ROOT = Path(__file__).resolve().parent.parent
 COOKIE = "matrix_session"
@@ -656,6 +656,13 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         if not n:
             raise HTTPException(404, "Goal not found")
         return {"ok": True}
+
+    @app.get("/api/bond")
+    def bond(coupon: float, years: float, price: float, per_year: int = 2, _: str = Depends(user)):
+        try:
+            return bonds.analyse(coupon, years, price, per_year)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
 
     # ---------------------------------------------------------------- journal
     class Entry(BaseModel):
