@@ -399,7 +399,7 @@ async function loadMood() {
 async function loadLedger() {
   const t = await api("/api/ledger");
   const f = t.forecasts;
-  $("fc-line").innerHTML = forecastVerdict(f);
+  $("fc-line").innerHTML = (f.paused ? `<b>Paused.</b> ${PAUSED_TEXT} ` : "") + forecastVerdict(f);
   $("fc-table").innerHTML = f.graded ? `<tr><th style="text-align:left">The model said the chance of beating the Nifty was</th><th>Forecasts</th><th>How many really beat it</th></tr>` +
     f.buckets.filter((b) => b.count).map((b) => `<tr><td>${Math.round(b.from * 100)} to ${Math.round(b.to * 100)} in 100</td><td>${whole.format(b.count)}</td><td>${Math.round(b.beat_share * 100)} in 100</td></tr>`).join("") : "";
   if (!t.periods.length) { $("ledger-line").textContent = "Not enough history yet. The first results appear once a full month has passed after a scored day."; $("ledger-table").innerHTML = ""; return; }
@@ -411,6 +411,7 @@ async function loadLedger() {
     t.periods.map((r) => `<tr><td>${shortDate(r.date)}</td><td class="${sign(r.strong_avg)}">${fracText(r.strong_avg)}</td><td class="${sign(r.weak_avg)}">${fracText(r.weak_avg)}</td><td class="${sign(r.market)}">${fracText(r.market)}</td><td>${Math.round(r.strong_beat_share * 100)} of 100</td></tr>`).join("");
 }
 
+const PAUSED_TEXT = "Over the last 3 months the forecast model did worse than a simple guess, so Matrix is hiding its numbers. They come back on their own once it does better. Forecasts are still made and graded every day.";
 // How the forecast model has done so far, in one honest paragraph.
 function forecastVerdict(r) {
   if (!r.graded) return "No forecast has been checked yet. The first check comes 20 trading days after the first forecast.";
@@ -421,8 +422,13 @@ function forecastVerdict(r) {
     (r.hit_rate > r.baseline ? "So far it does a little better than that simple guess." : "<b>So far the model is worse than that simple guess.</b>");
 }
 async function loadForecast(symbol) {
-  const { forecast: f, record: r } = await api(`/api/forecast/${encodeURIComponent(symbol)}`).catch(() => ({}));
-  if (!f || !$("drawer").classList.contains("open") || drawerItem !== `stock:${symbol}`) return;
+  const { forecast: f, paused, record: r } = await api(`/api/forecast/${encodeURIComponent(symbol)}`).catch(() => ({}));
+  if (!$("drawer").classList.contains("open") || drawerItem !== `stock:${symbol}`) return;
+  if (paused) {
+    $("drawer-forecast").innerHTML = `<h3>Forecast paused</h3><p>${PAUSED_TEXT}</p><p class="hint">${forecastVerdict(r.recent)}</p>`;
+    return;
+  }
+  if (!f) return;
   $("drawer-forecast").innerHTML = `<h3>Next 20 trading days, against the Nifty</h3>
     <p>Matrix's simple model puts the chance that it does better than the Nifty at <b>${Math.round(f.prob * 100)} in 100</b>. Forecast made on ${shortDate(f.date)}.</p>` +
     (f.low != null ? `<p>Likely range: over any 20 trading days in the past year, this stock moved between <b>${fracText(f.low, 0)}</b> and <b>${fracText(f.high, 0)}</b>, 8 times out of 10.</p>` : "") +

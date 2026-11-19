@@ -62,3 +62,23 @@ def test_forecast_endpoint_is_owner_only(market, monkeypatch):  # noqa: F811
     assert r["forecast"]["prob"] > 0.5 and "graded" in r["record"]
     assert c.get("/api/forecast/NOPE").json()["forecast"] is None
 
+
+
+def test_kill_switch_needs_enough_days_and_a_losing_record():
+    assert not forecast.paused({"graded": 0})
+    assert not forecast.paused({"days": 2, "graded": 5000, "hit_rate": 0.3, "baseline": 0.6})  # too few
+    assert not forecast.paused({"days": 3, "graded": 5000, "hit_rate": 0.62, "baseline": 0.6})
+    assert forecast.paused({"days": 3, "graded": 5000, "hit_rate": 0.49, "baseline": 0.59})
+
+
+def test_endpoint_hides_forecast_while_paused(market, monkeypatch):  # noqa: F811
+    forecast.backfill(market, horizon=20)
+    auth.set_user(market, "owner", "correct-horse-battery")
+    c = TestClient(api.create_app(market, "s"))
+    c.post("/api/login", json={"username": "owner", "password": "correct-horse-battery"})
+    assert c.get("/api/forecast/WIN1").json()["paused"] is False
+    monkeypatch.setattr(forecast, "paused", lambda recent: True)
+    c = TestClient(api.create_app(market, "s"))  # fresh app: the record is cached per app
+    c.post("/api/login", json={"username": "owner", "password": "correct-horse-battery"})
+    r = c.get("/api/forecast/WIN1").json()
+    assert r["paused"] is True and r["forecast"] is None and r["record"]["paused"] is True

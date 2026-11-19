@@ -521,7 +521,9 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
             key = tuple(conn.execute("SELECT (SELECT MAX(date) FROM forecasts),"
                                      " (SELECT MAX(date) FROM stock_prices)").fetchone())
             if graded.get("key") != key:
-                graded.update(key=key, record=ledger.forecast_record(conn))
+                recent = forecast.recent_record(conn)
+                graded.update(key=key, record={**ledger.forecast_record(conn), "recent": recent,
+                                               "paused": forecast.paused(recent)})
             return graded["record"]
 
     @app.get("/api/ledger")
@@ -538,9 +540,12 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
 
     @app.get("/api/forecast/{symbol}")
     def stock_forecast(symbol: str, _: str = Depends(owner_only)):
+        record = forecast_record()
+        if record["paused"]:
+            return {"forecast": None, "paused": True, "record": record}
         with lock:
             fc = forecast.latest(conn, symbol.upper())
-        return {"forecast": fc, "record": forecast_record()}
+        return {"forecast": fc, "paused": False, "record": record}
 
     # ---------------------------------------------------------------- trade planner
     class Levels(BaseModel):

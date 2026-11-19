@@ -18,6 +18,22 @@ from matrix import db, ledger, score
 HORIZON = ledger.HORIZON
 MODEL = "logit-v1"
 MIN_TRAIN_DATES = 2
+KILL_DAYS = 63          # about 3 months of trading days
+KILL_MIN_DAYS = 3       # forecast days in that window needed to judge (backfill makes one a month)
+KILL_MIN_GRADED = 300
+
+
+def recent_record(conn, horizon: int = HORIZON) -> dict:
+    """Forecasts made in the last 3 months whose result is already known."""
+    days = ledger.trading_days(conn)
+    since = days[-(KILL_DAYS + horizon)] if len(days) > KILL_DAYS + horizon else None
+    return ledger.forecast_record(conn, horizon, since=since)
+
+
+def paused(recent: dict) -> bool:
+    """Kill switch: hide forecasts while, over the last 3 months, they lose to the simple guess."""
+    return (recent.get("days", 0) >= KILL_MIN_DAYS and recent["graded"] >= KILL_MIN_GRADED
+            and recent["hit_rate"] < recent["baseline"])
 PARTS = [name for name, *_ in score.COMPONENTS]
 
 

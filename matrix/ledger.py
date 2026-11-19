@@ -93,14 +93,15 @@ def track_record(conn, horizon: int = HORIZON) -> dict:
     }
 
 
-def forecast_record(conn, horizon: int = HORIZON, max_days: int = 120) -> dict:
+def forecast_record(conn, horizon: int = HORIZON, max_days: int = 120, since: str | None = None) -> dict:
     """Grade every logged forecast whose `horizon` days have passed: did the stock beat the Nifty?"""
     days = trading_days(conn)
     index = {d: i for i, d in enumerate(days)}
     dates = [r[0] for r in conn.execute("SELECT DISTINCT date FROM forecasts WHERE horizon=?"
                                         " ORDER BY date DESC", (horizon,))]
     # One returns query per forecast day, so only the latest `max_days` days are graded.
-    dates = [d for d in dates if d in index and index[d] + horizon < len(days)][:max_days]
+    dates = [d for d in dates if d in index and index[d] + horizon < len(days)
+             and (since is None or d >= since)][:max_days]
     n = right = beat = live = 0
     buckets = [[lo, hi, 0, 0] for lo, hi in ((0, 0.4), (0.4, 0.5), (0.5, 0.6), (0.6, 1.01))]
     for d in dates:
