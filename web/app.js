@@ -375,9 +375,10 @@ async function loadAlerts() {
   const serious = a.mine.filter((m) => m.level === "danger" || m.level === "warning").length;
   $("al-title").textContent = !a.tracking ? "Alerts" : serious ? `${serious} thing${serious > 1 ? "s" : ""} to look at.` : "All clear for your stocks.";
   $("al-sub").textContent = !a.tracking
-    ? "You are not following any stocks yet. Add what you own in My portfolio, or follow a stock, and Matrix will warn you here."
+    ? "You are not following any stocks yet. Add what you own in My portfolio, follow a stock, or save a stop on a stock's page, and Matrix will warn you here."
     : `Matrix is watching ${a.tracking} stock${a.tracking > 1 ? "s" : ""} for you, using prices and official company filings.`;
   $("al-watch").innerHTML = a.watchlist.map((w) => `<span class="chip">${esc(w.kind === "stock" ? w.code : w.name)}<button data-unwatch="${esc(w.kind)}:${esc(w.code)}" aria-label="Stop following ${esc(w.name)}">Unfollow</button></span>`).join("");
+  $("al-levels").innerHTML = a.levels.map((l) => `<span class="chip">${esc(l.symbol)}: stop ${inr.format(l.stop)}${l.target ? `, target ${inr.format(l.target)}` : ""}<button data-unlevel="${esc(l.symbol)}" aria-label="Remove the stop and target for ${esc(l.symbol)}">Remove</button></span>`).join("");
   $("al-mine").innerHTML = a.mine.map((m) => alertItem(m)).join("") || `<li class="empty">${a.tracking ? "No alerts for your stocks right now." : "Nothing to show yet."}</li>`;
   $("al-market").innerHTML = a.market.map((m) => alertItem(m)).join("") || `<li class="empty">No serious alerts in the market right now.</li>`;
 }
@@ -601,6 +602,8 @@ document.addEventListener("click", async (e) => {
   const open = e.target.closest("[data-open]"); if (open) { const [k, c] = open.dataset.open.split(":"); return k === "stock" ? openStock(c) : openFund(c); }
   const uw = e.target.closest("[data-unwatch]");
   if (uw) { const [k, c] = uw.dataset.unwatch.split(":"); await setWatch(k, c, false); toast("Stopped following"); return loadAlerts(); }
+  const ul = e.target.closest("[data-unlevel]");
+  if (ul) { await api(`/api/levels/${encodeURIComponent(ul.dataset.unlevel)}`, { method: "DELETE" }); toast("Removed"); return loadAlerts(); }
   const un = e.target.closest("[data-uncompare]"); if (un) { compareItems.splice(+un.dataset.uncompare, 1); saveCompare(); loadCompare(); }
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); $("search-results").hidden = true; } });

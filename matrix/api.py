@@ -666,15 +666,19 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
             marks = ",".join("?" * len(mine_syms))
             mine = q(f"SELECT {cols} FROM alerts a WHERE a.symbol IN ({marks})"
                      f" ORDER BY {LEVEL_ORDER}, a.date DESC", mine_syms)
-            for m in mine:
-                m["owned"] = m["symbol"] in held
+        with lock:
+            mine = planner.level_alerts(conn, name) + mine
+        for m in mine:
+            m["owned"] = m["symbol"] in held
         # Market-wide: the serious ones only, skipping the long surveillance list.
         market = q(f"SELECT {cols} FROM alerts a WHERE a.level IN ('danger', 'warning')"
                    f" AND a.rule NOT IN ('surveillance', 'fall_month')"
                    f" ORDER BY {LEVEL_ORDER}, a.date DESC LIMIT 40")
         counts = {r["level"]: r["n"] for r in q("SELECT level, COUNT(*) n FROM alerts GROUP BY level")}
-        return {"mine": mine, "tracking": len(mine_syms), "market": market, "counts": counts,
-                "watchlist": watch}
+        levels = q("SELECT symbol, stop, target FROM levels WHERE username=? ORDER BY symbol", (name,))
+        tracking = len(set(mine_syms) | {lv["symbol"] for lv in levels})
+        return {"mine": mine, "tracking": tracking, "market": market, "counts": counts,
+                "watchlist": watch, "levels": levels}
 
     @app.post("/api/watchlist")
     def watch_add(w: Watch, name: str = Depends(user)):

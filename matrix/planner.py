@@ -92,3 +92,27 @@ def plan(conn, symbol: str, entry=None, stop=None, target=None, risk=None, capit
         out["history"] = replay(prices[-LOOKBACK - 1:], 1 - stop / entry, target / entry - 1)
     return out
 
+
+def level_alerts(conn, username: str) -> list[dict]:
+    """The user's own stops and targets that the latest close went through.
+
+    Levels are in rupees on the day they were set; a later split or bonus is not adjusted for.
+    """
+    out = []
+    for r in conn.execute(
+            "SELECT l.symbol, l.stop, l.target, p.date, p.close, p.name FROM levels l JOIN stock_prices p"
+            " ON p.symbol=l.symbol AND p.date=(SELECT MAX(date) FROM stock_prices WHERE symbol=l.symbol)"
+            " WHERE l.username=? ORDER BY l.symbol", (username,)):
+        base = {"symbol": r["symbol"], "name": r["name"], "date": r["date"], "link": None,
+                "source": "Your trade plan, NSE closing price"}
+        if r["close"] <= r["stop"]:
+            out.append({**base, "rule": "my_stop", "level": "warning",
+                        "title": f"Closed at Rs {r['close']:,.2f}, below your stop of Rs {r['stop']:,.2f}",
+                        "detail": "This is the exit point you planned before you started. Read your "
+                                  "journal note for this stock before you decide anything."})
+        elif r["target"] and r["close"] >= r["target"]:
+            out.append({**base, "rule": "my_target", "level": "info",
+                        "title": f"Closed at Rs {r['close']:,.2f}, above your target of Rs {r['target']:,.2f}",
+                        "detail": "It reached the level you planned. Decide whether your reason still "
+                                  "holds, then move the stop or the target."})
+    return out

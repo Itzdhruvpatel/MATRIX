@@ -76,3 +76,18 @@ def test_plan_endpoint_and_saved_levels(conn, monkeypatch):
     assert c.get("/api/plan/SWING").json()["saved"] is None
     c.post("/api/login", json={"username": "owner", "password": "correct-horse-battery"})
     assert "simulated" in c.get("/api/plan/SWING").json()
+
+
+def test_alerts_when_close_goes_through_your_stop_or_target(conn):
+    auth.set_user(conn, "u", "correct-horse-battery")
+    c = TestClient(api.create_app(conn, "s"))
+    c.post("/api/login", json={"username": "u", "password": "correct-horse-battery"})
+    last = planner.closes(conn, "RISE")[-1]
+    c.put("/api/levels/RISE", json={"stop": last * 1.01, "target": last * 1.2})   # closed below stop
+    c.put("/api/levels/SWING", json={"stop": 1, "target": 2})                     # closed above target
+    a = c.get("/api/alerts").json()
+    got = {m["symbol"]: (m["rule"], m["level"]) for m in a["mine"]}
+    assert got == {"RISE": ("my_stop", "warning"), "SWING": ("my_target", "info")}
+    assert a["tracking"] == 2 and [lv["symbol"] for lv in a["levels"]] == ["RISE", "SWING"]
+    c.put("/api/levels/RISE", json={"stop": last * 0.9, "target": last * 1.2})    # in between: quiet
+    assert {m["symbol"] for m in c.get("/api/alerts").json()["mine"]} == {"SWING"}
