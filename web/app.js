@@ -797,6 +797,13 @@ async function openFund(code) {
   const c1 = st.consistency_1y;
   if (c1.windows) lines.push(`If you had stayed invested for any 1 year in its history, you would have made money <b>${Math.round(c1.positive_share * 100)} times out of 100</b>.`);
   if (st.max_drawdown_all != null) lines.push(`Its worst fall ever was <b>${plainPct(st.max_drawdown_all)}</b> from a high. Funds like this can drop that much again.`);
+  const dp = d.direct;
+  if (dp) {
+    const [k, yrs] = dp.cagr_5y != null && st.cagr_5y != null ? ["cagr_5y", 5] : dp.cagr_3y != null && st.cagr_3y != null ? ["cagr_3y", 3] : ["return_1y", 1];
+    const gap = dp[k] != null && st[k] != null ? dp[k] - st[k] : null;
+    lines.push(`This is the <b>Regular plan</b>, which pays a commission to whoever sold it. The <button class="link" data-fund="${esc(dp.code)}">Direct plan</button> is the same fund, bought straight from the fund house.` +
+      (gap != null ? ` Over ${yrs} year${yrs > 1 ? "s" : ""} it grew <b>${pct1(gap)} more a year</b>: about ${rupees(gap * 100000)} a year on every Rs 1 lakh invested.` : ""));
+  }
   $("drawer-simple").innerHTML = `<h3>In simple words</h3>${lines.map((l) => `<p>${l}</p>`).join("") || "<p>Not enough history yet to summarise.</p>"}`;
 
   newChart().addAreaSeries({ lineColor: "#0b8a5c", topColor: "rgba(11,138,92,.22)", bottomColor: "rgba(11,138,92,0)", lineWidth: 2 })

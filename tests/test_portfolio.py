@@ -127,3 +127,17 @@ def test_cooling_off_for_hot_stocks_with_a_fresh_plan(conn):
     conn.execute("INSERT INTO alerts (symbol, date, rule, level, title) VALUES ('INFY', '2026-11-13',"
                  " 'auditor_exit', 'danger', 'The company''s auditor resigned')")
     assert "auditor resigned" in portfolio.hot_reason(conn, "INFY")
+
+
+def test_regular_plan_gets_a_direct_plan_note(conn):
+    conn.execute("UPDATE funds SET name='Parag Parikh Flexi Cap Fund', amc='PPFAS', plan='Direct Plan',"
+                 " option='Growth' WHERE scheme_code='122639'")
+    conn.execute("INSERT INTO funds (scheme_code, name, amc, plan, option, source, fetched_at) VALUES"
+                 " ('122640', 'Parag Parikh Flexi Cap Fund', 'PPFAS', 'Regular Plan', 'Growth', 't', 't')")
+    conn.execute("INSERT INTO fund_navs VALUES ('122640', '2026-11-13', 95.0, 't', 't')")
+    assert portfolio.direct_twin(conn, "122640") == "122639"
+    assert portfolio.direct_twin(conn, "122639") is None  # already Direct
+    portfolio.add(conn, "u", buy("122640", 10, 90, kind="fund"))
+    s = portfolio.summary(conn, "u")
+    assert s["holdings"][0]["direct_code"] == "122639"
+    assert any("Regular plan" in w["text"] for w in s["warnings"])

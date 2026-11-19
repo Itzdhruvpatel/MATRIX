@@ -378,3 +378,4 @@ button.h-row:hover { background: var(--gain-soft); }
   .lvl { padding: 6px 10px; }
   .disclaimer { padding: 16px 16px 36px; }
 }
+.simple button.link { color: #fff; font: inherit; padding: 0; }

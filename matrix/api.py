@@ -378,16 +378,19 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                  f" n.date=(SELECT MAX(date) FROM fund_navs WHERE scheme_code=f.scheme_code)"
                  f" WHERE {where} ORDER BY f.name LIMIT 30", args)
 
-    def fund_payload(code: str) -> dict:
-        info = q("SELECT * FROM funds WHERE scheme_code=?", (code,))
-        if not info:
-            raise HTTPException(404, f"Fund {code} not found")
+    def fund_history(code: str) -> list[dict]:
         loaded = q("SELECT 1 FROM pipeline_runs WHERE source='mfapi' AND date=? AND status='ok'"
                    " AND started_at >= ?", (code, (pipeline.today_ist() - timedelta(days=7)).isoformat()))
         if not loaded:  # fetch full history once a week per fund, on first view
             with lock:
                 pipeline.load_fund_history(conn, code)
-        navs = q("SELECT date, nav, source FROM fund_navs WHERE scheme_code=? ORDER BY date", (code,))
+        return q("SELECT date, nav, source FROM fund_navs WHERE scheme_code=? ORDER BY date", (code,))
+
+    def fund_payload(code: str) -> dict:
+        info = q("SELECT * FROM funds WHERE scheme_code=?", (code,))
+        if not info:
+            raise HTTPException(404, f"Fund {code} not found")
+        navs = fund_history(code)
         s = [(date.fromisoformat(n["date"]), n["nav"]) for n in navs]
         stats = analytics.summary(s)
         stats["consistency_1y"] = analytics.rolling_consistency(s, 1)
@@ -398,7 +401,14 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
 
     @app.get("/api/funds/{code}")
     def fund_detail(code: str, _: str = Depends(user)):
-        return fund_payload(code)
+        d = fund_payload(code)
+        with lock:
+            twin = portfolio.direct_twin(conn, code)
+        if twin:
+            t = [(date.fromisoformat(n["date"]), n["nav"]) for n in fund_history(twin)]
+            d["direct"] = {"code": twin, **{k: analytics.trailing_return(t, y) for k, y in
+                                            (("return_1y", 1), ("cagr_3y", 3), ("cagr_5y", 5))}}
+        return d
 
     # ---------------------------------------------------------------- compare
     @app.get("/api/compare")

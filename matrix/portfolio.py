@@ -49,6 +49,15 @@ def validate_tx(conn, tx: dict, held: dict) -> str | None:
     return None
 
 
+def direct_twin(conn, code: str) -> str | None:
+    """The Direct plan of the same fund and option, if `code` is a Regular plan."""
+    r = conn.execute(
+        "SELECT d.scheme_code FROM funds r JOIN funds d ON d.name=r.name AND d.amc=r.amc"
+        " AND COALESCE(d.option, '')=COALESCE(r.option, '') AND d.plan='Direct Plan'"
+        " WHERE r.scheme_code=? AND r.plan='Regular Plan'", (code,)).fetchone()
+    return r[0] if r else None
+
+
 BOOKS = ("real", "paper")  # paper = practice money
 
 
@@ -233,6 +242,11 @@ def summary(conn, username: str, book: str = "real") -> dict:
 
     for h in holdings:
         h["weight"] = h["value"] / total_value if total_value else 0
+        if h["kind"] == "fund" and (twin := direct_twin(conn, h["code"])):
+            h["direct_code"] = twin
+            warnings.append({"level": "watch", "text": f"{h['name']} is the Regular plan. The Direct plan"
+                             f" (code {twin}) is the same fund without the distributor's commission, so it"
+                             " costs less every year. Open the fund to see the difference."})
         if h["kind"] == "stock" and h["weight"] > MAX_SINGLE_STOCK:
             warnings.append({"level": "warning", "text": f"{h['code']} is {h['weight']:.1%} of your "
                              f"portfolio, above the {MAX_SINGLE_STOCK:.0%} single-stock limit."})
