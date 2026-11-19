@@ -34,3 +34,16 @@ def test_gap_days_are_tested_against_the_nifty():
     c = TestClient(api.create_app(conn, "s"))
     c.post("/api/login", json={"username": "u", "password": "correct-horse-battery"})
     assert c.get("/api/backtest/patterns").json()["patterns"]["gap_up"]["events"] == 2
+
+
+def test_result_is_saved_per_price_day(monkeypatch):
+    conn = db.connect(":memory:")
+    insert(conn, "NIFTYBEES", rows(120, 0.0))
+    calls = []
+    real = backtest.pattern_history
+    monkeypatch.setattr(backtest, "pattern_history", lambda c: calls.append(1) or real(c))
+    first = backtest.cached(conn)
+    assert backtest.cached(conn) == first and len(calls) == 1
+    insert(conn, "NIFTYBEES", [{**rows(1, 0.0)[0], "date": "2030-01-01"}])  # a new price day
+    backtest.cached(conn)
+    assert len(calls) == 2

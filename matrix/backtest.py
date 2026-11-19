@@ -5,6 +5,7 @@ today (only data up to that day). Each pattern is compared with the Nifty over t
 with "any day" (buying a random liquid stock on a random day), after trading costs and tax.
 Run: python -m matrix.backtest
 """
+import json
 import statistics
 from itertools import groupby
 
@@ -55,6 +56,21 @@ def pattern_history(conn, horizon: int = ledger.HORIZON) -> dict:
     days = ledger.trading_days(conn)
     return {"horizon": horizon, "cost": COST, "tax": TAX, "patterns": out,
             "from": days[0] if days else None, "to": days[-1] if days else None}
+
+
+def cached(conn) -> dict:
+    """The saved result for the latest price day, worked out and saved if it is missing.
+    The daily job calls this, so the web page only reads the saved copy."""
+    key = conn.execute("SELECT MAX(date) FROM stock_prices").fetchone()[0] or ""
+    r = conn.execute("SELECT key, body FROM reports WHERE name='pattern_backtest'").fetchone()
+    if r and r[0] == key:
+        return json.loads(r[1])
+    result = pattern_history(conn)
+    conn.execute("INSERT INTO reports (name, key, body, created_at) VALUES ('pattern_backtest', ?, ?,"
+                 " CURRENT_TIMESTAMP) ON CONFLICT (name) DO UPDATE SET key=excluded.key,"
+                 " body=excluded.body, created_at=excluded.created_at", (key, json.dumps(result)))
+    conn.commit()
+    return result
 
 
 if __name__ == "__main__":

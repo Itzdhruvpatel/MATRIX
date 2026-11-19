@@ -291,17 +291,11 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                 out.setdefault(r["key"], {})[label] = r["value"]
         return {"date": latest, "values": out}
 
-    tested: dict = {}
-
     @app.get("/api/backtest/patterns")
     def pattern_backtest(_: str = Depends(user)):
-        """Redone once per new price day. It holds the lock for a few seconds that first time;
-        precompute it in the daily job if more history makes it slow."""
+        """Saved by the daily job; worked out here only if that has not run yet."""
         with lock:
-            key = conn.execute("SELECT MAX(date) FROM stock_prices").fetchone()[0]
-            if tested.get("key") != key:
-                tested.update(key=key, result=backtest.pattern_history(conn))
-            return tested["result"]
+            return backtest.cached(conn)
 
     @app.get("/api/stocks/search")
     def stock_search(query: str, _: str = Depends(user)):
@@ -836,6 +830,7 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                             score.compute(c)
                             forecast.compute_all(c)
                             radar.compute(c)  # price alerts and chart patterns for the new day
+                            backtest.cached(c)  # so the page never waits for it
                     # NSE posts FII/DII figures in the evening; the API only has the latest day.
                     if today.weekday() < 5 and now.hour >= 19 and not c.execute(
                             "SELECT 1 FROM pipeline_runs WHERE source='nse_fii_dii' AND date=?"

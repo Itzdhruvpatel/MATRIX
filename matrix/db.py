@@ -111,6 +111,10 @@ CREATE TABLE IF NOT EXISTS insider_trades (
     PRIMARY KEY (link, n)
 );
 
+CREATE TABLE IF NOT EXISTS reports (
+    name TEXT PRIMARY KEY, key TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS macro (
     date TEXT NOT NULL, key TEXT NOT NULL, value REAL NOT NULL, source TEXT NOT NULL,
     fetched_at TEXT NOT NULL, PRIMARY KEY (date, key)

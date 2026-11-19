@@ -331,3 +331,5 @@ if __name__ == "__main__":
     print("insider trades:", load_insider(conn))
     print("macro:", load_macro(conn))
     print(f"Radar raised {radar.compute(conn)} alerts")
+    from matrix import backtest
+    print("pattern backtest:", {k: v["events"] for k, v in backtest.cached(conn)["patterns"].items()})
