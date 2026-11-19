@@ -86,3 +86,25 @@ def test_old_database_gets_book_column(tmp_path):
     old.commit(); old.close()
     c = db.connect(path)
     assert c.execute("SELECT book FROM transactions").fetchone()[0] == "real"
+
+
+def test_practice_limits_block_rule_breaking_buys(conn):
+    paper = lambda *a, **k: {**buy(*a, **k), "book": "paper"}  # noqa: E731
+    conn.execute("INSERT INTO practice_limits VALUES ('u', 100000, 0.10, 0.01)")
+    assert "set a stop for TCS first" in portfolio.add(conn, "u", paper("TCS", 2, 4000))
+    conn.execute("INSERT INTO levels (username, symbol, stop) VALUES ('u', 'TCS', 3800)")
+    # 10% of Rs 1 lakh is Rs 10,000: 3 shares at 4,000 is too big for one stock.
+    assert "above your 10% limit" in portfolio.add(conn, "u", paper("TCS", 3, 4000))
+    # Loss at the stop: 2 x (4,000 - 3,800) = 400, under the 1% limit of Rs 1,000.
+    assert portfolio.add(conn, "u", paper("TCS", 2, 4000)) is None
+    conn.execute("UPDATE levels SET stop=1000")
+    assert "1,500, above your limit of Rs 1,000" in portfolio.add(conn, "u", paper("TCS", 0.5, 4000))
+    assert portfolio.add(conn, "u", buy("TCS", 50, 4000)) is None  # real money is not limited
+    assert portfolio.add(conn, "u", paper("122639", 900, 100, kind="fund")) is None  # funds: cash only
+    assert "only Rs 2,000 of practice money is left" in portfolio.add(
+        conn, "u", paper("122639", 30, 100, kind="fund"))
+    assert portfolio.add(conn, "u", paper("TCS", 2, 4000, side="sell")) is None  # sells always allowed
+    assert portfolio.practice_cash(conn, "u", 100000) == 10000
+    # CSV import into practice money follows the same rules.
+    r = portfolio.import_csv(conn, "u", "type,code,side,date,quantity,price\nstock,INFY,buy,2025-11-13,1,1500", "paper")
+    assert "set a stop for INFY first" in r["errors"][0]

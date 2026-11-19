@@ -104,6 +104,11 @@ CREATE TABLE IF NOT EXISTS levels (
     username TEXT NOT NULL, symbol TEXT NOT NULL, stop REAL NOT NULL, target REAL, set_at TEXT,
     PRIMARY KEY (username, symbol)
 );
+
+CREATE TABLE IF NOT EXISTS practice_limits (
+    username TEXT PRIMARY KEY, capital REAL NOT NULL, max_stock_pct REAL NOT NULL,
+    max_loss_pct REAL NOT NULL
+);
 """
 
 # Columns added after a table first shipped: (table, column, type). Old databases get them on connect.

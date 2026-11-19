@@ -413,7 +413,36 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
     @app.get("/api/portfolio")
     def get_portfolio(book: str = "real", name: str = Depends(user)):
         with lock:
-            return portfolio.summary(conn, name, check_book(book))
+            out = portfolio.summary(conn, name, check_book(book))
+            if book == "paper":
+                out["limits"] = lim = portfolio.get_limits(conn, name)
+                out["cash"] = portfolio.practice_cash(conn, name, lim["capital"]) if lim else None
+        return out
+
+    class Limits(BaseModel):
+        capital: float
+        max_stock_pct: float = portfolio.MAX_SINGLE_STOCK
+        max_loss_pct: float = 0.01
+
+    @app.put("/api/practice-limits")
+    def set_limits(body: Limits, name: str = Depends(user)):
+        if body.capital <= 0 or not 0 < body.max_stock_pct <= 1 or not 0 < body.max_loss_pct <= 0.2:
+            raise HTTPException(400, "Money must be above zero, the limit per stock 1 to 100%,"
+                                     " and the loss per trade 0.1 to 20%")
+        with lock:
+            conn.execute("INSERT INTO practice_limits (username, capital, max_stock_pct, max_loss_pct)"
+                         " VALUES (?,?,?,?) ON CONFLICT (username) DO UPDATE SET capital=excluded.capital,"
+                         " max_stock_pct=excluded.max_stock_pct, max_loss_pct=excluded.max_loss_pct",
+                         (name, body.capital, body.max_stock_pct, body.max_loss_pct))
+            conn.commit()
+        return {"ok": True}
+
+    @app.delete("/api/practice-limits")
+    def remove_limits(name: str = Depends(user)):
+        with lock:
+            conn.execute("DELETE FROM practice_limits WHERE username=?", (name,))
+            conn.commit()
+        return {"ok": True}
 
     @app.post("/api/portfolio/transactions")
     def add_tx(tx: Tx, name: str = Depends(user)):
@@ -528,6 +557,9 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         if not (stop or target) and saved:
             stop, target = saved[0]["stop"], saved[0]["target"]
         with lock:
+            lim = portfolio.get_limits(conn, name)
+            if lim and not (risk or capital):  # size to the practice rules by default
+                capital, risk = lim["capital"], lim["capital"] * lim["max_loss_pct"]
             try:
                 out = planner.plan(conn, symbol, entry, stop, target, risk, capital, odds=sees_ratings(name))
             except LookupError as e:

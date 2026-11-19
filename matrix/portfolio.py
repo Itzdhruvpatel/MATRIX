@@ -66,15 +66,47 @@ def add(conn, username: str, tx: dict) -> str | None:
     book = tx.get("book") or "real"
     if book not in BOOKS:
         return "book must be 'real' or 'paper'"
-    err = validate_tx(conn, tx, holdings_qty(conn, username, book))
-    if err:
-        return err
-    conn.execute(
-        "INSERT INTO transactions (username, kind, code, side, date, quantity, price, note,"
-        " book, created_at) VALUES (?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)",
-        (username, tx["kind"], tx["code"], tx["side"], tx["date"], tx["quantity"], tx["price"],
-         tx.get("note"), book))
-    conn.commit()
+    errors = add_many(conn, username, [("", tx)], book)
+    return errors[0] if errors else None
+
+
+def get_limits(conn, username: str) -> dict | None:
+    """Practice money rules, if the user switched them on."""
+    r = conn.execute("SELECT capital, max_stock_pct, max_loss_pct FROM practice_limits"
+                     " WHERE username=?", (username,)).fetchone()
+    return dict(r) if r else None
+
+
+def practice_cash(conn, username: str, capital: float) -> float:
+    r = conn.execute("SELECT SUM(CASE WHEN side='buy' THEN quantity * price ELSE -quantity * price END)"
+                     " FROM transactions WHERE username=? AND book='paper'", (username,)).fetchone()
+    return capital - (r[0] or 0)
+
+
+def limit_error(conn, username: str, tx: dict, held: dict, cash: float, limits: dict) -> str | None:
+    """Blocks a practice buy that breaks the user's own rules: cash, size, and loss at the stop."""
+    if tx["side"] != "buy":
+        return None
+    cost, cap = tx["quantity"] * tx["price"], limits["capital"]
+    if cost > cash + 0.005:
+        return f"it costs Rs {cost:,.0f} but only Rs {max(cash, 0):,.0f} of practice money is left"
+    if tx["kind"] != "stock":
+        return None
+    code = tx["code"]
+    after = (held.get(("stock", code), 0) + tx["quantity"]) * tx["price"]
+    if after > limits["max_stock_pct"] * cap + 0.005:
+        return (f"{code} would be {after / cap:.0%} of your practice money, above your "
+                f"{limits['max_stock_pct']:.0%} limit for one stock")
+    r = conn.execute("SELECT stop FROM levels WHERE username=? AND symbol=?", (username, code)).fetchone()
+    if not r:
+        return f"set a stop for {code} first: open the stock and use Plan a trade"
+    if r[0] >= tx["price"]:
+        return f"your stop for {code} (Rs {r[0]:,.2f}) is not below the price"
+    loss, allowed = tx["quantity"] * (tx["price"] - r[0]), limits["max_loss_pct"] * cap
+    if loss > allowed + 0.005:
+        fits = int(allowed // (tx["price"] - r[0]))
+        return (f"at your stop you would lose Rs {loss:,.0f}, above your limit of Rs {allowed:,.0f}"
+                f" a trade ({fits:,} shares fit)")
     return None
 
 
@@ -106,13 +138,16 @@ def import_csv(conn, username: str, text: str, book: str = "real") -> dict:
 def add_many(conn, username: str, items: list[tuple[str, dict]], book: str = "real") -> list[str]:
     """All-or-nothing: check every (label, tx) in date order; save all only if none fail."""
     held = holdings_qty(conn, username, book)
+    limits = get_limits(conn, username) if book == "paper" else None
+    cash = practice_cash(conn, username, limits["capital"]) if limits else 0.0
     errors = []
     for label, tx in sorted(items, key=lambda x: x[1]["date"]):
-        err = validate_tx(conn, tx, held)
+        err = validate_tx(conn, tx, held) or (limits and limit_error(conn, username, tx, held, cash, limits))
         if err:
-            errors.append(f"{label}: {err}")
+            errors.append(f"{label}: {err}" if label else err)
             continue
         held[(tx["kind"], tx["code"])] += tx["quantity"] if tx["side"] == "buy" else -tx["quantity"]
+        cash -= tx["quantity"] * tx["price"] * (1 if tx["side"] == "buy" else -1)
     if errors:
         return errors[:20]
     conn.executemany(

@@ -270,6 +270,8 @@ async function loadPortfolio() {
   const p = await api(`/api/portfolio?book=${book}`);
   $("pf-heading").textContent = book === "paper" ? "My practice money is worth" : "My portfolio is worth";
   document.querySelectorAll(".real-only").forEach((el) => (el.hidden = book !== "real"));
+  document.querySelectorAll(".paper-only").forEach((el) => (el.hidden = book !== "paper"));
+  if (book === "paper") showLimits(p.limits, p.cash);
   loadWhatIf(currentMove);
   if (book === "real") { loadTax(); loadJournal(); }
   const has = p.holdings.length > 0;
@@ -341,6 +343,23 @@ $("cas-form").addEventListener("submit", async (e) => {
   } catch (err) { msg.textContent = err.message; }
   finally { $("cas-password").value = ""; btn.disabled = false; }
 });
+
+function showLimits(l, cash) {
+  const f = $("limits-form");
+  $("limits-off").hidden = !l;
+  if (l) { f.capital.value = l.capital; f.max_stock_pct.value = +(l.max_stock_pct * 100).toFixed(2); f.max_loss_pct.value = +(l.max_loss_pct * 100).toFixed(2); }
+  $("limits-line").innerHTML = l
+    ? `Rules are on. Practice money left to spend: <b>${rupees(cash)}</b>. Up to ${rupees(l.capital * l.max_stock_pct)} in one stock, and up to ${rupees(l.capital * l.max_loss_pct)} lost if a trade hits its stop.`
+    : "Rules are off: any practice buy is allowed.";
+}
+$("limits-form").addEventListener("submit", async (e) => {
+  e.preventDefault(); const f = e.target; $("limits-msg").textContent = "";
+  try {
+    await api("/api/practice-limits", { method: "PUT", body: JSON.stringify({ capital: +f.capital.value, max_stock_pct: f.max_stock_pct.value / 100, max_loss_pct: f.max_loss_pct.value / 100 }) });
+    toast("Practice rules saved."); loadPortfolio();
+  } catch (err) { $("limits-msg").textContent = err.message; }
+});
+$("limits-off").addEventListener("click", async () => { await api("/api/practice-limits", { method: "DELETE" }).catch((err) => toast(err.message)); loadPortfolio(); });
 
 /* ---------------------------------------------------------------- alerts */
 const LEVEL_WORD = { danger: "Danger", warning: "Warning", watch: "Watch", info: "Info" };
@@ -417,6 +436,7 @@ async function loadPlan(symbol, params = {}) {
   const p = await api(`/api/plan/${encodeURIComponent(symbol)}?${new URLSearchParams(params)}`);
   if (drawerItem !== `stock:${symbol}`) return;
   for (const k of ["entry", "stop", "target"]) f[k].value = +p[k].toFixed(2);
+  for (const k of ["risk", "capital"]) if (p[k] && !f[k].value) f[k].value = Math.round(p[k]);
   $("plan-clear").hidden = !p.saved;
   const lines = [`Your stop is <b>${pct1(1 - p.stop / p.entry)} below</b> the price and your target <b>${pct1(p.target / p.entry - 1)} above</b> it, so you aim to make Rs ${inr.format(p.reward_risk)} for every Rs 1 you risk. On a normal day this stock moves about ${pct1(p.typical_move)}.`];
   if (p.shares != null) lines.push(p.shares
