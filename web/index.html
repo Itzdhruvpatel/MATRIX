@@ -392,6 +392,26 @@ fund,122639,buy,2025-06-02,120,81.5</pre>
         <dl id="drawer-stats" class="stats"></dl>
         <div id="drawer-reasons"></div>
         <div id="drawer-forecast" class="simple"></div>
+        <form id="drawer-plan" class="form plan" hidden>
+          <h3>Plan a trade before you start</h3>
+          <p class="hint tight">Decide where you would get out and how much you can afford to lose first. Matrix works out the size and replays this stock's past. End-of-day prices only.</p>
+          <div class="row">
+            <label>Price (Rs) <input name="entry" type="number" step="any" min="0" required></label>
+            <label>Stop (Rs) <input name="stop" type="number" step="any" min="0" required></label>
+            <label>Target (Rs) <input name="target" type="number" step="any" min="0" required></label>
+          </div>
+          <div class="row">
+            <label>Most I will lose (Rs) <input name="risk" type="number" step="any" min="0" placeholder="Example: 2000"></label>
+            <label>Money I invest with (Rs) <input name="capital" type="number" step="any" min="0" placeholder="Optional"></label>
+          </div>
+          <div id="plan-out" class="simple"></div>
+          <p id="plan-msg" class="error" role="status"></p>
+          <div class="plan-actions">
+            <button type="submit" class="primary">Work it out</button>
+            <button type="button" id="plan-save" class="ghost small">Save stop and target</button>
+            <button type="button" id="plan-clear" class="ghost small" hidden>Remove saved stop and target</button>
+          </div>
+        </form>
         <div id="drawer-flags"></div>
         <p id="drawer-source" class="source"></p>
       </div>

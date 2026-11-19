@@ -394,6 +394,47 @@ async function loadForecast(symbol) {
     `<p class="hint">How good is the model? ${forecastVerdict(r)} A research note, not a reason to buy or sell.</p>`;
 }
 
+/* ---------------------------------------------------------------- trade planner + Time Machine */
+const times = (f) => `${Math.round(f * 100)} times in 100`;
+const pct1 = (f) => `${(f * 100).toFixed(1)}%`;
+async function loadPlan(symbol, params = {}) {
+  const f = $("drawer-plan");
+  const p = await api(`/api/plan/${encodeURIComponent(symbol)}?${new URLSearchParams(params)}`);
+  if (drawerItem !== `stock:${symbol}`) return;
+  for (const k of ["entry", "stop", "target"]) f[k].value = +p[k].toFixed(2);
+  $("plan-clear").hidden = !p.saved;
+  const lines = [`Your stop is <b>${pct1(1 - p.stop / p.entry)} below</b> the price and your target <b>${pct1(p.target / p.entry - 1)} above</b> it, so you aim to make Rs ${inr.format(p.reward_risk)} for every Rs 1 you risk. On a normal day this stock moves about ${pct1(p.typical_move)}.`];
+  if (p.shares != null) lines.push(p.shares
+    ? `Within your limit: <b>${whole.format(p.shares)} shares</b>, about <b>${rupees(p.money)}</b>. At the stop you lose about ${rupees(p.loss)}; at the target you gain about ${rupees(p.gain)}.` +
+      (p.share_of_capital > 0.1 ? ` That is <b>${plainPct(p.share_of_capital)} of your money</b>, above Matrix's 10% single-stock rule.` : "")
+    : "Not even one share fits inside that loss. Move the stop closer or allow a bigger loss.");
+  const s = p.simulated, h = p.history;
+  if (s) lines.push(`<b>Time Machine:</b> in ${whole.format(s.runs)} made-up runs of the next ${p.horizon} trading days, built from this stock's own daily moves over the past year with its trend taken out, the price reached your target first <b>${times(s.target)}</b> and your stop first <b>${times(s.stop)}</b>. Average result per trade: <b>${fracText(s.avg_result, 2)}</b>.`);
+  if (h) lines.push(`On its real past: started on each of the last ${h.runs} trading days, this plan reached the target first ${times(h.target)} and the stop first ${times(h.stop)}. Average result: ${fracText(h.avg_result, 2)}.`);
+  if (s) lines.push(`<span class="hint">${Math.abs(s.avg_result) < 0.005 ? "Close to a coin flip once the trend is taken out: a stop and a target change how often you win, not whether you come out ahead. " : ""}Trading costs and tax are left out and make every result a little worse. A practice tool, not a reason to buy or sell.</span>`);
+  $("plan-out").innerHTML = lines.map((l) => `<p>${l}</p>`).join("");
+}
+function planParams() {
+  return Object.fromEntries([...new FormData($("drawer-plan"))].filter(([, v]) => v !== ""));
+}
+$("drawer-plan").addEventListener("submit", (e) => {
+  e.preventDefault(); $("plan-msg").textContent = "";
+  loadPlan(drawerItem.split(":")[1], planParams()).catch((err) => ($("plan-msg").textContent = err.message));
+});
+$("plan-save").addEventListener("click", async () => {
+  const f = $("drawer-plan"), symbol = drawerItem.split(":")[1];
+  try {
+    await api(`/api/levels/${encodeURIComponent(symbol)}`, { method: "PUT", body: JSON.stringify({ stop: +f.stop.value, target: f.target.value ? +f.target.value : null }) });
+    $("plan-clear").hidden = false; $("plan-msg").textContent = "";
+    toast("Saved. The Alerts page tells you when it closes past either level.");
+  } catch (err) { $("plan-msg").textContent = err.message; }
+});
+$("plan-clear").addEventListener("click", async () => {
+  const symbol = drawerItem.split(":")[1];
+  await api(`/api/levels/${encodeURIComponent(symbol)}`, { method: "DELETE" }).catch((err) => toast(err.message));
+  $("plan-clear").hidden = true; toast("Removed.");
+});
+
 let currentMove = -0.2;
 document.getElementById("moves").addEventListener("click", (e) => { const b = e.target.closest("[data-move]"); if (b) loadWhatIf(+b.dataset.move); });
 async function loadWhatIf(move) {
@@ -559,6 +600,7 @@ function resetDrawer(title) {
   for (const id of ["drawer-kicker", "drawer-price", "drawer-score", "drawer-simple", "drawer-stats", "drawer-reasons", "drawer-forecast", "drawer-flags", "drawer-source"]) $(id).innerHTML = "";
   if (chart) { chart.remove(); chart = null; }
   $("drawer-watch").hidden = true;
+  $("drawer-plan").hidden = true; $("plan-out").innerHTML = ""; $("plan-msg").textContent = "";
   openDrawer();
 }
 
@@ -596,6 +638,8 @@ async function openStock(symbol) {
     : `<p class="hint">No Matrix Score yet. A stock needs about 6 months of trading and at least Rs 1 crore traded on a normal day.</p>`;
   paintWatch(d.watched);
   if (me.ratings) loadForecast(d.info.symbol);
+  $("drawer-plan").hidden = false;
+  loadPlan(d.info.symbol, Object.fromEntries(["risk", "capital"].map((k) => [k, $("drawer-plan")[k].value]).filter(([, v]) => v))).catch((err) => ($("plan-msg").textContent = err.message));
   $("drawer-flags").innerHTML = d.alerts.length ? `<h3>Alerts for this stock</h3><ul class="list">${d.alerts.map((x) => alertItem(x, false)).join("")}</ul>` : "";
   $("drawer-source").textContent = `Source: NSE end-of-day prices, adjusted for splits and bonuses. Updated ${d.info.fetched_at.replace("T", " ").slice(0, 16)}. Not live.`;
 }

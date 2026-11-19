@@ -15,8 +15,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from matrix import (analytics, auth, cas, db, forecast, insights, ledger, pipeline, portfolio, radar,
-                    score, screener)
+from matrix import (analytics, auth, cas, db, forecast, insights, ledger, pipeline, planner,
+                    portfolio, radar, score, screener)
 
 ROOT = Path(__file__).resolve().parent.parent
 COOKIE = "matrix_session"
@@ -498,6 +498,52 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         with lock:
             fc = forecast.latest(conn, symbol.upper())
         return {"forecast": fc, "record": forecast_record()}
+
+    # ---------------------------------------------------------------- trade planner
+    class Levels(BaseModel):
+        stop: float
+        target: float | None = None
+
+    @app.get("/api/plan/{symbol}")
+    def trade_plan(symbol: str, entry: float | None = None, stop: float | None = None,
+                   target: float | None = None, risk: float | None = None,
+                   capital: float | None = None, name: str = Depends(user)):
+        """Position size for everyone; the Time Machine odds only for whoever sees ratings."""
+        symbol = symbol.upper()
+        saved = q("SELECT stop, target FROM levels WHERE username=? AND symbol=?", (name, symbol))
+        if not (stop or target) and saved:
+            stop, target = saved[0]["stop"], saved[0]["target"]
+        with lock:
+            try:
+                out = planner.plan(conn, symbol, entry, stop, target, risk, capital, odds=sees_ratings(name))
+            except LookupError as e:
+                raise HTTPException(404, str(e))
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+        out["saved"] = saved[0] if saved else None
+        return out
+
+    @app.put("/api/levels/{symbol}")
+    def set_levels(symbol: str, body: Levels, name: str = Depends(user)):
+        symbol = symbol.upper()
+        if body.stop <= 0 or (body.target is not None and body.target <= body.stop):
+            raise HTTPException(400, "The stop must be above zero, and the target above the stop")
+        with lock:
+            if portfolio.latest_price(conn, "stock", symbol) is None:
+                raise HTTPException(400, f"Unknown stock '{symbol}'")
+            conn.execute("INSERT INTO levels (username, symbol, stop, target, set_at)"
+                         " VALUES (?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT (username, symbol) DO UPDATE"
+                         " SET stop=excluded.stop, target=excluded.target, set_at=excluded.set_at",
+                         (name, symbol, body.stop, body.target))
+            conn.commit()
+        return {"ok": True}
+
+    @app.delete("/api/levels/{symbol}")
+    def remove_levels(symbol: str, name: str = Depends(user)):
+        with lock:
+            conn.execute("DELETE FROM levels WHERE username=? AND symbol=?", (name, symbol.upper()))
+            conn.commit()
+        return {"ok": True}
 
     # ---------------------------------------------------------------- journal
     class Entry(BaseModel):

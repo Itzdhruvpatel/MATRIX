@@ -99,6 +99,11 @@ CREATE TABLE IF NOT EXISTS forecasts (
     PRIMARY KEY (symbol, date, horizon)
 );
 CREATE INDEX IF NOT EXISTS ix_forecast_date ON forecasts(date);
+
+CREATE TABLE IF NOT EXISTS levels (
+    username TEXT NOT NULL, symbol TEXT NOT NULL, stop REAL NOT NULL, target REAL, set_at TEXT,
+    PRIMARY KEY (username, symbol)
+);
 """
 
 # Columns added after a table first shipped: (table, column, type). Old databases get them on connect.
