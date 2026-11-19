@@ -11,6 +11,9 @@ This is a research tool. It does not give investment advice, place trades, or gu
 - Gainers, losers, unusual moves over 20%, and a data health panel
 - A red banner when the daily price or NAV update fails or runs late, with the reason
 - Chart patterns from the last trading day: new 1-year high, crossing the 200-day average up or down, trading at 3 times a normal day, and opening 3% or more away from the last close. Facts about the price, not signals
+- Pattern backtest: every past day of every liquid stock is checked with the same rules, and the next 20 trading days are compared with the Nifty and with a random stock on a random day, after 0.3% costs and 20% short-term tax
+- Interest rates and the rupee: RBI repo rate, 10-year government bond yield, 3-month T-bill, big-bank FD rate, the dollar and India VIX, each with a line on why it matters
+- Big investors today: FII and DII buying and selling in the cash market, kept day by day
 
 **Matrix Score (Ratings tab)**
 - 0 to 100 score for every liquid NSE stock (about 1,500), ranked on momentum, trend, calm, worst fall and ease of trading
@@ -23,11 +26,13 @@ This is a research tool. It does not give investment advice, place trades, or gu
 - A demat CAS lists holdings without purchase prices, so those count from the statement date at that day's price
 - Value, gain, booked gains, and true yearly return (XIRR) per holding and overall
 - Warns when one stock is over 10% of the portfolio
+- Notes every Regular fund plan you hold; the fund page shows how much more its Direct plan grew a year
 
 **Alerts (Danger Radar)**
 - Follow any stock; alerts for stocks you own or follow appear in the Alerts tab
 - Price rules: exchange surveillance, falls over 20% in a month, one-day moves over 20%, pump-and-dump patterns, near a one-year low
 - Official NSE filings: auditor resignations, defaults, insolvency, fraud or regulator action, rating downgrades, top executive exits, promoter pledges, insider trades
+- Insider trade details read from each filing's data file: who, role, shares, value and how. Market sales of Rs 1 crore or more by promoters or directors are a Warning; moves between promoter companies are shown once as Info
 - Large bulk and block deals
 - Chart patterns as Info alerts on the stocks you own or follow
 - Your own stops and targets: a Warning when a stock closes below the stop you saved, Info when it closes above your target
@@ -42,7 +47,8 @@ This is a research tool. It does not give investment advice, place trades, or gu
 - So far Strong stocks have not beaten simply owning the Nifty
 
 **Forecast (stock detail, owner only)**
-- Chance the stock beats the Nifty ETF (NIFTYBEES) over the next 20 trading days, from a logistic regression on the five score parts
+- Chance the stock beats the Nifty ETF (NIFTYBEES) over the next 20 trading days, 3 months and 12 months, from a logistic regression on the five score parts (one model per length)
+- Kill switch: a length that did worse than the simple guess over the last 3 months is hidden until it does better. Forecasts are still made and graded meanwhile
 - Trained walk-forward: a forecast for a day uses only past days whose 20-day result was known by then
 - Likely range: how far the stock moved over any 20 trading days in the past year, 8 times out of 10
 - Matrix saves each forecast once and never changes it. The Ratings tab grades them against what happened, next to the simple guess the model has to beat. As of 16 November 2026, on 6,079 graded forecasts (all re-created from past data) the model was right 49 times in 100; always guessing "will not beat the Nifty" was right 59 times in 100
@@ -64,6 +70,11 @@ This is a research tool. It does not give investment advice, place trades, or gu
 - Investment journal: why you bought, when you would sell, and a review date
 - Practice money: a separate pretend portfolio for trying ideas
 - Practice rules: set starting practice money, the most in one stock and the most lost per trade. Matrix then refuses any practice buy that costs more than the cash left, breaks the one-stock limit, has no stop saved, or would lose more than the limit at the stop
+- Cooling-off: a practice buy of a stock that moved 10% or more in 5 days, or has a Danger or Warning alert, waits until its plan is a day old
+
+**Planning tab**
+- Goals in today's rupees with a target date: 2,000 simulated paths show the chance of getting there, the range of likely values, and the monthly amount that makes it likely (3 times in 4). Assumptions are shown on the page
+- Bond calculator: yield to maturity, current yield, total received, and the price change if interest rates move 1% or 2%
 
 **Compare**
 - Up to 4 stocks or funds on one chart, all starting at 100, with returns and risk side by side
@@ -73,6 +84,8 @@ This is a research tool. It does not give investment advice, place trades, or gu
 - Stock prices adjusted for splits and bonuses using the exchange's own previous-close figures
 - Full fund NAV history from mfapi.in on first view, cross-checked against official AMFI NAVs
 - Quality checks: broken rows are blocked, moves over 20% in a day are flagged
+- Reads NSE's older price file too (before July 2024), so `--since` can load several years of history
+- Nightly encrypted backup of every table, restored into a temporary file and checked each night; a failure shows in the Market today banner
 - Every stored number keeps its source and fetch time
 - Login with hashed passwords, signed session cookies, and lockout after 5 wrong attempts
 - Optional two-step login (Account page): scan a QR code with any authenticator app, then each login needs the 6-digit code. Codes follow RFC 6238, work once, and allow 30 seconds of clock drift
@@ -94,7 +107,9 @@ python -m uvicorn matrix.api:app --port 8000
 
 Then open http://localhost:8000 and log in.
 
-`--days 250` loads about one year of stock prices and computes Matrix Scores (takes a few minutes). `python -m matrix.forecast` scores past months and builds the first forecasts from them; after that the daily update adds a forecast each day. Fund history downloads the first time you open each fund.
+`--days 250` loads about one year of stock prices and computes Matrix Scores (takes a few minutes). For more history, run `python -m matrix.pipeline --since 2021-11-01` once (about half an hour; safe to stop and rerun), then `python -m matrix.forecast` again.
+
+Backups: `python -m matrix.backup` makes one now, `--test` checks the newest restores, `--restore FILE OUT.db` rebuilds a database. The first run creates `MATRIX_BACKUP_KEY` in `.env`. Copy that key somewhere off this computer: without it a backup cannot be opened. `python -m matrix.forecast` scores past months and builds the first forecasts from them; after that the daily update adds a forecast each day. Fund history downloads the first time you open each fund.
 
 ## Tests
 
@@ -105,7 +120,7 @@ python -m pytest
 ## Layout
 
 ```
-matrix/sources/   NSE prices, NSE feeds, AMFI and fund history loaders
+matrix/sources/   NSE prices, feeds, insider files, FII/DII, RBI rates, AMFI and fund history
 matrix/validate.py  data quality rules
 matrix/analytics.py returns, risk, XIRR, split adjustment
 matrix/score.py   Matrix Score
@@ -114,7 +129,11 @@ matrix/cas.py     CAS statement import
 matrix/radar.py   Danger Radar rules and alerts
 matrix/insights.py market mood, what-if scenarios, tax view
 matrix/ledger.py  Prediction Ledger (score and forecast track record)
-matrix/forecast.py 20-day forecast model
+matrix/forecast.py forecast models (20, 63 and 252 trading days) and kill switch
+matrix/backtest.py chart pattern backtest
+matrix/goals.py   goal tracker
+matrix/bonds.py   bond calculator
+matrix/backup.py  encrypted backups and restore test
 matrix/screener.py Shortlist rules
 matrix/planner.py trade planner, Time Machine, stop and target alerts
 matrix/pipeline.py  fetch, validate, store

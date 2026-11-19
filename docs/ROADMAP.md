@@ -26,14 +26,22 @@ Status as of 19 November 2026. Full plan: `docs/Matrix-Design.pdf`.
 - Daily chart patterns (1-year high, 200-day average crosses, trading jumps, price gaps) on Market today and as Info alerts
 - Practice money rules that block practice buys over your cash, one-stock or loss-per-trade limits, or with no stop
 - Alerts when a stock closes through a stop or target you saved
+- Forecast kill switch: a forecast length is hidden while it loses to the simple guess over 3 months
+- 3-month and 12-month forecasts next to the 20-day one, each graded on its own
+- Older NSE price files (before July 2024) and `--since` to load years of history
+- Pattern backtest against the Nifty, after costs and tax
+- Nightly encrypted backups with an automatic restore test
+- Goal tracker with ranges of outcomes, and a bond calculator (Planning tab)
+- FII/DII daily flows, RBI rates, the rupee, bond yields and India VIX on Market today
+- Insider trade details from each filing's data file
+- Cooling-off check on practice buys of stocks that moved fast or have serious alerts
+- Direct vs Regular plan cost for funds
 
 Effort key: S = a day or less, M = a few days, L = a week or more.
 
 ## 2. Still to build
 
 ### Phase 2: Danger Radar, news and company filings
-- FII/DII money flows. Source: NSE. S
-- Insider trade details (who, how many shares, buy or sell) by reading each filing's data file. M
 - Credit rating changes direct from agencies. Source: CRISIL, ICRA, CARE press releases. M
 - News reader: tag each article to companies, mark it good or bad news. Source: news RSS feeds + Claude API. L
 - Remaining Danger Radar rules that need company financials (debt, cash flow, receivables) and fund data (manager change, underperformance). L
@@ -45,24 +53,21 @@ Effort key: S = a day or less, M = a few days, L = a week or more.
 - Evening digest at 9 PM: what happened today and why. M
 - Ask AI: chat that answers only from Matrix's own data and shows the source for every number. Source: Claude API. L
 - "Explain like I'm new" mode and Hindi text. M
-- Macro dashboard: RBI rates, inflation, rupee, crude oil, bond yields. Source: RBI, MOSPI. M
+- Macro extras: inflation (CPI) and crude oil. RBI rates, rupee, bond yields and VIX are done. Source: MOSPI, a commodity price source. S
 
 ### Phase 4: Forecast model, Prediction Ledger, paper portfolio
-- Forecast card for 3 and 12 months (20 trading days is done). Needs several years of history to train on. M
-- More training history: the 20-day model has 6 past months to learn from and, so far, does worse than always guessing "will not beat the Nifty". Load more years of prices before trusting it. M
+- Load more years of prices on your own database (`python -m matrix.pipeline --since 2021-11-01`, then `python -m matrix.forecast`) so the models have more to learn from. S (mostly waiting)
 - Testing on past years the model never saw, compared with simply buying a Nifty index fund. L
-- Kill switch: hide forecasts if they do worse than the index fund for 3 months. S
-- Cooling-off check before large or risky moves. S
 
 ### Phase 5: Paper trading period
 - Run Phase 4 live with pretend money for at least 3 months. No real money yet. Fix what breaks. L (mostly waiting)
 
 ### Phase 6: More assets and tools
 - IPO analyser: business quality, price vs similar companies, how much promoters are selling. Source: offer documents (DRHP/RHP). L
-- Bond analyser: yield, rating, what happens if interest rates move. Source: RBI, CCIL, NSE debt segment. M
-- Backtester: test a rule on past years with costs and taxes. L
-- Fund extras: expense ratio, direct vs regular cost, fund manager changes, portfolio overlap. Source: AMC monthly disclosures. M
-- Goal tracker and allocation builder (with ranges of outcomes, not single numbers). M
+- Bond analyser extras: live bond prices and ratings. The calculator is done. Source: RBI Retail Direct, NSE debt segment, rating agencies. M
+- Backtester for your own rules (any score, pattern and holding period). The chart pattern backtest is done. M
+- Fund extras: expense ratio, fund manager changes, portfolio overlap. Direct vs Regular cost is done. Source: AMC monthly disclosures. M
+- Allocation builder (the goal tracker is done). M
 
 ## 3. Needs a decision from you
 
@@ -78,7 +83,7 @@ Effort key: S = a day or less, M = a few days, L = a week or more.
 ## 4. Hardening before real money
 
 - Two-step login (password + authenticator app): done, turn it on in Account
-- Daily encrypted backups, and a monthly test that restoring works
+- Daily encrypted backups with a restore test: done (runs each night while the server runs; keep a copy of `MATRIX_BACKUP_KEY` off the computer)
 - Move from SQLite to PostgreSQL (needed if hosted or data grows)
 - HTTPS if it runs on a server
 - Alert you when a daily data job fails: done inside the app (banner on Market today). Telegram or email alerts still need item 6 in section 3
@@ -96,7 +101,8 @@ Effort key: S = a day or less, M = a few days, L = a week or more.
 - Saved stops and targets are in rupees; after a split or bonus they need to be set again
 - Chart patterns and the Time Machine use one year of prices; more history would make both more reliable
 - Daily updates run only while the server is running
-- All data is in one SQLite file with no automatic backup yet
+- Backups run only from the server's nightly loop, not from the GitHub Action; on Supabase use its own daily backups
+- FII/DII figures start from the day Matrix first runs; NSE's API gives only the latest day
 
 ## 6. Recommended next 3 steps
 
