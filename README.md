@@ -14,6 +14,7 @@ This is a research tool. It does not give investment advice, place trades, or gu
 - Pattern backtest: every past day of every liquid stock is checked with the same rules, and the next 20 trading days are compared with the Nifty and with a random stock on a random day, after 0.3% costs and 20% short-term tax
 - Interest rates and the rupee: RBI repo rate, 10-year government bond yield, 3-month T-bill, big-bank FD rate, the dollar and India VIX, each with a line on why it matters
 - Big investors today: FII and DII buying and selling in the cash market, kept day by day
+- IPOs: issues open on NSE with price band, dates and times subscribed (with notes on heavy demand and SME issues), and how the last 40 IPOs did on their first day and since, measured with Matrix's own prices
 
 **Matrix Score (Ratings tab)**
 - 0 to 100 score for every liquid NSE stock (about 1,500), ranked on momentum, trend, calm, worst fall and ease of trading
@@ -44,14 +45,14 @@ This is a research tool. It does not give investment advice, place trades, or gu
 **Prediction Ledger (Ratings tab)**
 - Re-scores past months using only what was known then, and checks how Strong and Weak stocks did over the next month against the Nifty
 - Every month stays on the record, good or bad
-- So far Strong stocks have not beaten simply owning the Nifty
+- On the last 24 months of a five-year test, Strong stocks returned 0.8% a month against 0.4% for the Nifty and did better in 14 of 24 months, before costs and tax. Over the shorter one-year test they did not beat it
 
 **Forecast (stock detail, owner only)**
 - Chance the stock beats the Nifty ETF (NIFTYBEES) over the next 20 trading days, 3 months and 12 months, from a logistic regression on the five score parts (one model per length)
 - Kill switch: a length that did worse than the simple guess over the last 3 months is hidden until it does better. Forecasts are still made and graded meanwhile
 - Trained walk-forward: a forecast for a day uses only past days whose 20-day result was known by then
 - Likely range: how far the stock moved over any 20 trading days in the past year, 8 times out of 10
-- Matrix saves each forecast once and never changes it. The Ratings tab grades them against what happened, next to the simple guess the model has to beat. As of 16 November 2026, on 6,079 graded forecasts (all re-created from past data) the model was right 49 times in 100; always guessing "will not beat the Nifty" was right 59 times in 100
+- Matrix saves each forecast once and never changes it. The Ratings tab grades them against what happened, next to the simple guess the model has to beat. On five years of prices (November 2021 to November 2026, re-created from past data) the models were right 53 times in 100 for 20 days (simple guess: 55), 52 for 3 months (guess: 53) and 51 for 12 months (guess: 65). None beats the simple guess yet
 
 **Trade planner and Time Machine (stock detail)**
 - Type the price, a stop and a target (or take the defaults: stop two typical daily moves below, target twice as far above) and the most you will lose. Matrix works out how many shares fit, and warns when that is over 10% of your money
@@ -61,7 +62,7 @@ This is a research tool. It does not give investment advice, place trades, or gu
 
 **Shortlist (owner only)**
 - Pick plain rules (minimum score, no Danger or Warning alerts, daily trading, calm price, uptrend, small worst fall) and see which stocks pass, with the reasons
-- Replays the same rules on past months and compares the next month with owning the Nifty
+- Backtests the same rules on past years: hold each pick for a month, 3 months or a year, pay 0.3% costs and tax each time, and compare with holding the Nifty. Shows what Rs 1 lakh became, the worst period, and every period
 - Ideas to research, not advice
 
 **What if, tax and journal (Portfolio tab)**
@@ -75,6 +76,11 @@ This is a research tool. It does not give investment advice, place trades, or gu
 **Planning tab**
 - Goals in today's rupees with a target date: 2,000 simulated paths show the chance of getting there, the range of likely values, and the monthly amount that makes it likely (3 times in 4). Assumptions are shown on the page
 - Bond calculator: yield to maturity, current yield, total received, and the price change if interest rates move 1% or 2%
+- Allocation builder: a rule-of-thumb mix of shares, debt and gold from the years before you need the money and the biggest fall you can sit through, what a 2008-style crash would do to it, and how your portfolio compares
+
+**Account**
+- Hindi option for menus, headings, labels, buttons and main hints (sentences built from live numbers stay in English)
+- Words explained: 16 terms (NAV, SIP, XIRR, stop and target, FII and DII, repo rate, Direct and Regular plans, capital gains tax and more) in plain English and Hindi
 
 **Compare**
 - Up to 4 stocks or funds on one chart, all starting at 100, with returns and risk side by side
@@ -131,8 +137,9 @@ matrix/insights.py market mood, what-if scenarios, tax view
 matrix/ledger.py  Prediction Ledger (score and forecast track record)
 matrix/forecast.py forecast models (20, 63 and 252 trading days) and kill switch
 matrix/backtest.py chart pattern backtest
-matrix/goals.py   goal tracker
+matrix/goals.py   goal tracker and allocation builder
 matrix/bonds.py   bond calculator
+matrix/ipo.py     IPO tracker
 matrix/backup.py  encrypted backups and restore test
 matrix/screener.py Shortlist rules
 matrix/planner.py trade planner, Time Machine, stop and target alerts
@@ -140,7 +147,7 @@ matrix/pipeline.py  fetch, validate, store
 matrix/db.py      schema (SQLite or PostgreSQL)
 matrix/auth.py    passwords, sessions, two-step codes
 matrix/api.py     web API and daily refresh
-web/              dashboard (HTML, CSS, JS)
+web/              dashboard (HTML, CSS, JS; hi.js holds the Hindi text)
 docs/             design document
 ```
 

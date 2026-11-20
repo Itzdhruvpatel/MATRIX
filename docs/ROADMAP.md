@@ -1,6 +1,6 @@
 # Matrix: what's left to build
 
-Status as of 19 November 2026. Full plan: `docs/Matrix-Design.pdf`.
+Status as of 20 November 2026. Full plan: `docs/Matrix-Design.pdf`.
 
 ## 1. Done so far
 
@@ -36,6 +36,10 @@ Status as of 19 November 2026. Full plan: `docs/Matrix-Design.pdf`.
 - Insider trade details from each filing's data file
 - Cooling-off check on practice buys of stocks that moved fast or have serious alerts
 - Direct vs Regular plan cost for funds
+- Backtester for your own Shortlist rules: 1 month, 3 months or 1 year holding, with costs and tax
+- Allocation builder (shares, debt, gold) compared with your portfolio
+- IPO tracker: open issues and how recent IPOs did after listing
+- Hindi option and a Words explained glossary
 
 Effort key: S = a day or less, M = a few days, L = a week or more.
 
@@ -52,8 +56,8 @@ Effort key: S = a day or less, M = a few days, L = a week or more.
 - Morning brief at 8:30 AM: what changed overnight and what matters for your holdings. Source: global market data + news + Claude API. M
 - Evening digest at 9 PM: what happened today and why. M
 - Ask AI: chat that answers only from Matrix's own data and shows the source for every number. Source: Claude API. L
-- "Explain like I'm new" mode and Hindi text. M
-- Macro extras: inflation (CPI) and crude oil. RBI rates, rupee, bond yields and VIX are done. Source: MOSPI, a commodity price source. S
+- Hindi for the sentences Matrix writes from live numbers (menus, headings, labels and a glossary are done). M
+- Macro extras: inflation (CPI) and crude oil. RBI rates, rupee, bond yields and VIX are done. MOSPI's CPI API stopped at December 2025 after the base-year change, and there is no free official crude price feed; needs a source decision. S
 
 ### Phase 4: Forecast model, Prediction Ledger, paper portfolio
 - Load more years of prices on your own database (`python -m matrix.pipeline --since 2021-11-01`, then `python -m matrix.forecast`) so the models have more to learn from. S (mostly waiting)
@@ -63,11 +67,9 @@ Effort key: S = a day or less, M = a few days, L = a week or more.
 - Run Phase 4 live with pretend money for at least 3 months. No real money yet. Fix what breaks. L (mostly waiting)
 
 ### Phase 6: More assets and tools
-- IPO analyser: business quality, price vs similar companies, how much promoters are selling. Source: offer documents (DRHP/RHP). L
+- IPO analyser: business quality, price vs similar companies, how much promoters are selling. The IPO tracker (open issues, subscription, how recent IPOs did) is done; the rest needs reading offer documents (DRHP/RHP). L
 - Bond analyser extras: live bond prices and ratings. The calculator is done. Source: RBI Retail Direct, NSE debt segment, rating agencies. M
-- Backtester for your own rules (any score, pattern and holding period). The chart pattern backtest is done. M
-- Fund extras: expense ratio, fund manager changes, portfolio overlap. Direct vs Regular cost is done. Source: AMC monthly disclosures. M
-- Allocation builder (the goal tracker is done). M
+- Fund extras: expense ratio, fund manager changes, portfolio overlap. Direct vs Regular cost is done. AMFI's expense ratio page serves 100 rows a page (about 600 slow pages a month), so it needs a bulk file or a paid feed; overlap and manager changes need AMC monthly disclosures. M
 
 ## 3. Needs a decision from you
 
@@ -96,7 +98,7 @@ Effort key: S = a day or less, M = a few days, L = a week or more.
 - Matrix Score uses price behaviour only. No profits, debt or news yet
 - Prices are end of day, not live
 - A demat CAS (NSDL, CDSL) has no purchase prices, so those holdings count from the statement date. A mutual fund CAS must cover the period from your first purchase
-- The forecast model is not better than a simple guess yet (see the Ratings tab)
+- The forecast models are not better than a simple guess yet, even with five years of prices (20 days: 53 vs 55 in 100; 3 months: 52 vs 53; 12 months: 51 vs 65). See the Ratings tab
 - The `dev` test login should be removed once you create your own
 - Saved stops and targets are in rupees; after a split or bonus they need to be set again
 - Chart patterns and the Time Machine use one year of prices; more history would make both more reliable
