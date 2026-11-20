@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Liu+Jian+Mao+Cao&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" defer></script>
+  <script src="hi.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -473,6 +474,36 @@ fund,122639,buy,2025-06-02,120,81.5</pre>
           <div><button class="ghost small" id="totp-disable" type="button">Turn off two-step login</button></div>
         </div>
         <p id="totp-msg" class="error" role="status"></p>
+      </section>
+      <section class="card form">
+        <h2>Language</h2>
+        <div class="seg" role="radiogroup" aria-label="Language">
+          <label><input type="radio" name="lang" value="en" checked> English</label>
+          <label><input type="radio" name="lang" value="hi"> हिंदी</label>
+        </div>
+        <p class="hint tight">Hindi covers menus, headings, labels and buttons. Sentences Matrix writes from live numbers stay in English for now.</p>
+      </section>
+      <section class="card">
+        <h2>Words explained</h2>
+        <p class="hint">Plain meanings of the words Matrix uses.</p>
+        <dl class="glossary">
+          <dt>NAV</dt><dd>The price of one unit of a mutual fund, worked out once a day after the market closes.</dd>
+          <dt>SIP</dt><dd>Putting a fixed amount into a fund every month, whatever the market is doing.</dd>
+          <dt>Yearly growth (XIRR)</dt><dd>Your real yearly return, counting exactly when each rupee went in and came out. Compare it with your FD rate.</dd>
+          <dt>CAGR</dt><dd>The steady yearly growth that would turn the starting value into the ending value.</dd>
+          <dt>Volatility (swing)</dt><dd>How much a price jumps up and down. Higher means a bumpier ride.</dd>
+          <dt>Worst fall (drawdown)</dt><dd>The biggest drop from a high point to a later low point.</dd>
+          <dt>Stop and target</dt><dd>The price where you plan to get out with a small loss (stop), and where you plan to take a profit (target), decided before you start.</dd>
+          <dt>Nifty</dt><dd>The 50 largest companies on NSE. Matrix compares everything with simply owning a Nifty fund (NIFTYBEES).</dd>
+          <dt>FII and DII</dt><dd>Foreign investors, and Indian institutions such as mutual funds, insurers and banks.</dd>
+          <dt>Repo rate</dt><dd>The rate at which RBI lends to banks. Loan and FD rates follow it.</dd>
+          <dt>Bond yield</dt><dd>The yearly return on a bond if you hold it to the end. When yields rise, existing bond prices fall.</dd>
+          <dt>IPO and SME</dt><dd>A company selling shares to the public for the first time. SME issues are small companies with lighter rules and more risk.</dd>
+          <dt>Pledge</dt><dd>Owners borrowing money against their own shares. If the price falls, lenders may sell those shares.</dd>
+          <dt>Direct and Regular plan</dt><dd>The same fund. Regular pays a commission to whoever sold it, so it costs more every year.</dd>
+          <dt>Short and long-term tax</dt><dd>Gains on shares and equity funds sold within a year are taxed at 20%; after a year at 12.5% above Rs 1.25 lakh a year.</dd>
+          <dt>CAS</dt><dd>One free statement listing all your mutual funds (from CAMS or KFintech) or demat shares (from NSDL or CDSL).</dd>
+        </dl>
       </section>
     </main>
 

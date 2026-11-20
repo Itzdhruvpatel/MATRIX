@@ -281,7 +281,9 @@ async function loadRatings() {
 }
 
 /* ---------------------------------------------------------------- account */
+document.querySelectorAll('input[name="lang"]').forEach((r) => r.addEventListener("change", () => setLang(r.value)));
 async function loadAccount() {
+  document.querySelector(`input[name="lang"][value="${currentLang()}"]`).checked = true;
   me = await api("/api/me");
   $("acct-sub").textContent = `You are logged in as ${me.username}.`;
   $("totp-state").textContent = me.totp ? "on" : "off";
@@ -856,3 +858,5 @@ async function openFund(code) {
 
 /* ---------------------------------------------------------------- start */
 showApp().catch(() => showLogin());
+
+if (currentLang() !== "en") applyLang(currentLang());
