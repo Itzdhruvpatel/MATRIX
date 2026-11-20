@@ -379,3 +379,6 @@ button.h-row:hover { background: var(--gain-soft); }
   .disclaimer { padding: 16px 16px 36px; }
 }
 .simple button.link { color: #fff; font: inherit; padding: 0; }
+.ipo { padding: 12px 4px; }
+.ipo small { display: block; }
+.ipo p { margin: 6px 0 0; }

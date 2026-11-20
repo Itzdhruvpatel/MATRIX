@@ -177,6 +177,19 @@ async function loadToday() {
   loadPatterns();
   loadFlows();
   loadMacro();
+  loadIpos().catch(() => ($("ipo-card").hidden = true));
+}
+async function loadIpos() {
+  const d = await api("/api/ipos"), p = d.past;
+  $("ipo-card").hidden = !d.current.length && !p.count;
+  $("ipo-open").innerHTML = d.current.map((i) => `<li class="ipo"><b>${esc(i.name)}</b>${i.sme ? ' <span class="pill">SME</span>' : ""}
+    <small class="muted">${esc(i.price ?? "")}, open ${i.opens ? shortDate(i.opens) : "?"} to ${i.closes ? shortDate(i.closes) : "?"}</small>
+    <p>${i.subscribed == null ? "Subscription figures not out yet." : `Bids so far: <b>${inr.format(i.subscribed)} times</b> the shares on offer.` +
+      (i.subscribed >= 50 ? " Very heavy demand: most applicants get no shares, and the listing price often runs ahead of the business." : i.subscribed < 1 ? " Not fully bid yet." : "")}
+    ${i.sme ? " SME issues are small companies with lighter rules: the minimum application is usually over Rs 1 lakh and the shares can be hard to sell later." : ""}</p></li>`).join("") || `<li class="empty">No IPO is open on NSE right now.</li>`;
+  $("ipo-past-line").innerHTML = p.count ? `Of the last ${p.count} IPOs Matrix has prices for, <b>${Math.round(p.below_issue * 100)} in 100</b> now trade below their issue price. The usual one closed ${fracText(p.median_listing_day)} on its first day and is ${fracText(p.median_since)} from its issue price now. A short window: many IPOs drift lower in their first year.` : "";
+  $("ipo-past").innerHTML = p.count ? `<tr><th style="text-align:left">Company</th><th>Listed</th><th>First day</th><th>Since issue</th></tr>` +
+    p.rows.slice(0, 12).map((r) => `<tr><td><button class="link" data-symbol="${esc(r.symbol)}">${esc(r.name)}</button>${r.sme ? " (SME)" : ""}</td><td>${shortDate(r.listed)}</td><td class="${sign(r.listing_day)}">${fracText(r.listing_day)}</td><td class="${sign(r.since)}">${fracText(r.since)}</td></tr>`).join("") : "";
 }
 const MACRO = [
   ["repo", "RBI repo rate", "%", "What RBI charges banks to borrow. Loan and FD rates follow it, usually a few months later."],
@@ -219,7 +232,9 @@ async function loadPatterns() {
   patterns = await api("/api/scanner");
   showPatterns(patternPick);
   if (!patternTest) $("pattern-test").textContent = "Checking how each pattern did in the past...";
-  patternTest = await api("/api/backtest/patterns");
+  const t = await api("/api/backtest/patterns");
+  if (t.pending) { $("pattern-test").textContent = "Matrix is working out how each pattern did in the past. It takes about a minute; come back to this page."; return; }
+  patternTest = t;
   showPatterns(patternPick);
 }
 // What happened after this pattern in the past, in one honest paragraph.
@@ -229,7 +244,7 @@ function patternVerdict(t, rule) {
   const n = (f) => `<b>${fracText(f)}</b>`;
   return `Tested on every liquid stock from ${shortDate(t.from)} to ${shortDate(t.to)}: after this pattern (${whole.format(r.events)} times), stocks moved ${n(r.avg)} on average over the next ${t.horizon} trading days, and ${fracText(r.median)} in the usual case. The Nifty moved ${fracText(r.market_avg)} over the same days. They beat the Nifty ${Math.round(r.beat_share * 100)} times in 100. ` +
     `After costs (${(t.cost * 100).toFixed(1)}%) and ${Math.round(t.tax * 100)}% short-term tax: ${n(r.avg_after_costs)} a trade. A random liquid stock on a random day: ${fracText(any.avg_after_costs)} after costs, beating the Nifty ${Math.round(any.beat_share * 100)} times in 100. ` +
-    "One year is a short test, the same stock can appear many times, and a pattern that worked for a year often stops working.";
+    "The same stock can appear many times, and a pattern that worked in the past often stops working once many people use it.";
 }
 function showPatterns(rule) {
   patternPick = rule;

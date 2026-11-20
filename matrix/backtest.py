@@ -63,6 +63,13 @@ def pattern_history(conn, horizon: int = ledger.HORIZON) -> dict:
             "from": days[0] if days else None, "to": days[-1] if days else None}
 
 
+def saved(conn) -> tuple[dict | None, bool]:
+    """The last saved result, and whether it is for the latest price day."""
+    key = conn.execute("SELECT MAX(date) FROM stock_prices").fetchone()[0] or ""
+    r = conn.execute("SELECT key, body FROM reports WHERE name='pattern_backtest'").fetchone()
+    return (json.loads(r[1]), r[0] == key) if r else (None, False)
+
+
 def cached(conn) -> dict:
     """The saved result for the latest price day, worked out and saved if it is missing.
     The daily job calls this, so the web page only reads the saved copy."""

@@ -5,6 +5,7 @@ import json
 import os
 import re
 import secrets
+import sqlite3
 import threading
 import time
 from collections import defaultdict
@@ -16,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from matrix import (analytics, auth, backtest, backup, bonds, cas, db, forecast, goals,
-                    insights, ledger, pipeline, planner, portfolio, radar, score, screener)
+                    insights, ipo, ledger, pipeline, planner, portfolio, radar, score, screener)
 
 ROOT = Path(__file__).resolve().parent.parent
 COOKIE = "matrix_session"
@@ -267,6 +268,21 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                 "groups": {k: v[:12] for k, v in groups.items()},
                 "counts": {k: len(v) for k, v in groups.items()}}
 
+    ipo_cache: dict = {}
+
+    @app.get("/api/ipos")
+    def ipos(_: str = Depends(user)):
+        """Fetched from NSE at most once an hour; recent IPOs are measured with Matrix's own prices."""
+        if time.time() - ipo_cache.get("at", 0) > 3600:
+            try:
+                ipo_cache.update(at=time.time(), data=ipo.fetch())
+            except Exception:
+                if "data" not in ipo_cache:
+                    raise HTTPException(502, "NSE did not answer. Try again in a few minutes.")
+        cur, past = ipo_cache["data"]
+        with lock:
+            return {"current": ipo.current(cur), "past": ipo.past(conn, past)}
+
     @app.get("/api/flows")
     def flows(_: str = Depends(user)):
         """FII and DII net buying (Rs crore) for the last 20 days Matrix has, newest first."""
@@ -291,11 +307,35 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                 out.setdefault(r["key"], {})[label] = r["value"]
         return {"date": latest, "values": out}
 
+    backtesting = threading.Lock()
+
+    def backtest_in_background():
+        if not backtesting.acquire(blocking=False):
+            return  # already running
+        def run():
+            try:
+                c = db.connect(os.environ.get("MATRIX_DB"))  # own connection: the API keeps working
+                backtest.cached(c)
+                c.close()
+            except Exception as e:
+                print("backtest error:", e)
+            finally:
+                backtesting.release()
+        threading.Thread(target=run, daemon=True).start()
+
     @app.get("/api/backtest/patterns")
     def pattern_backtest(_: str = Depends(user)):
-        """Saved by the daily job; worked out here only if that has not run yet."""
+        """Saved by the daily job. If it is out of date, it is redone in the background (it takes a
+        minute with several years of prices) and the last saved result is shown meanwhile."""
         with lock:
-            return backtest.cached(conn)
+            result, fresh = backtest.saved(conn)
+            in_memory = isinstance(conn, sqlite3.Connection) and not conn.execute(
+                "PRAGMA database_list").fetchone()[2]
+            if not fresh and in_memory:  # tests: no second connection can see this data
+                return backtest.cached(conn)
+        if not fresh:
+            backtest_in_background()
+        return result or {"pending": True}
 
     @app.get("/api/stocks/search")
     def stock_search(query: str, _: str = Depends(user)):
