@@ -13,12 +13,17 @@ from matrix import analytics, db, ledger, radar
 
 COST = 0.003  # brokerage, STT, stamp duty and slippage for a buy and a sell together (rough)
 TAX = 0.20    # short-term capital gains tax on listed shares held under a year (from July 2024)
+LONG_TAX = 0.125  # long-term rate, held over a year (the yearly Rs 1.25 lakh tax-free limit is left out)
 ANY = "any_day"
 
 
-def after_costs(ret: float) -> float:
+def after_costs(ret: float, tax: float = TAX) -> float:
     r = ret - COST
-    return r * (1 - TAX) if r > 0 else r  # a loss pays no tax (setting it off is left out)
+    return r * (1 - tax) if r > 0 else r  # a loss pays no tax (setting it off is left out)
+
+
+def tax_for(horizon: int) -> float:
+    return LONG_TAX if horizon >= 250 else TAX
 
 
 def pattern_history(conn, horizon: int = ledger.HORIZON) -> dict:

@@ -185,11 +185,14 @@
             <label><input type="checkbox" name="uptrend"> Price above its long-term average</label>
             <label><input type="checkbox" name="small_fall"> Smaller worst fall this year than most</label>
           </div>
+          <label>Test on the past, holding each pick for
+            <select name="horizon"><option value="20" selected>1 month (20 trading days)</option><option value="63">3 months</option><option value="252">1 year</option></select></label>
           <button type="submit" class="primary">Show my shortlist</button>
         </form>
         <section class="card">
           <h2 id="sl-title">Stocks that pass</h2>
           <p class="ledger-line" id="sl-line"></p>
+          <div class="table-scroll"><table id="sl-table" class="table"></table></div>
           <ul id="sl-list" class="list"></ul>
         </section>
       </section>
@@ -407,6 +410,18 @@ fund,122639,buy,2025-06-02,120,81.5</pre>
           <ul id="goal-list" class="list"></ul>
         </section>
       </section>
+      <form id="alloc-form" class="card form">
+        <h2>How much in shares, debt and gold?</h2>
+        <p class="hint">A rule-of-thumb starting point from two questions, compared with what you hold now. Not advice for your situation: taxes, loans and emergency savings matter too.</p>
+        <div class="row">
+          <label>Years before I need this money <input name="years" type="number" min="1" max="60" value="10" required></label>
+          <label>The biggest one-year fall I could sit through without selling (%) <input name="max_fall" type="number" min="0" max="100" value="20" required></label>
+        </div>
+        <div id="alloc-out" class="simple"></div>
+        <p id="alloc-msg" class="error" role="status"></p>
+        <button type="submit" class="primary">Show a mix</button>
+      </form>
+
       <form id="bond-form" class="card form">
         <h2>Bond calculator</h2>
         <p class="hint">For a government security, SDL or company bond with a fixed interest rate. Prices are per Rs 100 of face value, as brokers and RBI Retail Direct show them.</p>

@@ -67,7 +67,12 @@ def shortlist(conn, rules: Rules) -> dict:
 
 
 def history(conn, rules: Rules, horizon: int = ledger.HORIZON) -> dict:
-    """Same rules on past scored days (alerts left out: Matrix keeps only today's) vs the Nifty."""
+    """Same rules on past scored days (alerts left out: Matrix keeps only today's) vs the Nifty.
+
+    Each period buys every passing stock in equal amounts and sells after `horizon` trading days,
+    paying costs and tax each time; the Nifty is simply held, before tax."""
+    from matrix import backtest
+    tax = backtest.tax_for(horizon)
     rows, empty = [], 0
     for d, end in ledger.checked_dates(conn, horizon):
         picks = [s for s, sc, c, m in conn.execute(
@@ -80,10 +85,19 @@ def history(conn, rules: Rules, horizon: int = ledger.HORIZON) -> dict:
         market = rets.pop(ledger.MARKET, None)
         if market is None or not rets:
             continue
-        rows.append((sum(rets.values()) / len(rets), market))
+        avg = sum(rets.values()) / len(rets)
+        rows.append({"date": d, "until": end, "stocks": len(rets), "avg": avg, "market": market,
+                     "after": backtest.after_costs(avg, tax)})
     n = len(rows)
     if not n:
         return {"periods": 0, "empty": empty, "horizon": horizon}
-    return {"periods": n, "empty": empty, "horizon": horizon,
-            "avg": sum(a for a, _ in rows) / n, "market_avg": sum(m for _, m in rows) / n,
-            "won": sum(a > m for a, m in rows)}
+    growth, market_growth = 1e5, 1e5  # Rs 1 lakh, run period after period
+    for r in sorted(rows, key=lambda r: r["date"]):
+        growth *= 1 + r["after"]
+        market_growth *= 1 + r["market"]
+    return {"periods": n, "empty": empty, "horizon": horizon, "tax": tax, "cost": backtest.COST,
+            "avg": sum(r["avg"] for r in rows) / n, "market_avg": sum(r["market"] for r in rows) / n,
+            "avg_after_costs": sum(r["after"] for r in rows) / n,
+            "won": sum(r["avg"] > r["market"] for r in rows), "worst": min(r["after"] for r in rows),
+            "from": min(r["date"] for r in rows), "growth": growth, "market_growth": market_growth,
+            "rows": sorted(rows, key=lambda r: r["date"], reverse=True)}

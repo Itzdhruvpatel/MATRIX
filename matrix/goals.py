@@ -56,3 +56,56 @@ def project(target: float, target_date: str, saved: float, monthly: float, equit
         "monthly_for_likely": _quantile(needed, LIKELY), "likely": LIKELY,
         "assumptions": {"inflation": INFLATION, "mean": mean, "swing": swing},
     }
+
+
+# ---------------------------------------------------------------- allocation builder
+GOLD = (0.08, 0.15)
+YEARS_CAP = ((3, 0.20), (5, 0.40), (10, 0.60))  # fewer years than this: at most this much in shares
+LONG_CAP = 0.75
+CRASH = 0.55  # Indian shares fell more than half in 2008; debt and gold held roughly steady
+
+
+def allocation(years: float, max_fall: float) -> dict:
+    """A rule-of-thumb mix of shares, debt and gold for how long the money can stay invested and
+    how big a one-year fall the person can sit through. A starting point, not advice."""
+    by_time = next((cap for limit, cap in YEARS_CAP if years < limit), LONG_CAP)
+    # Shares can fall about 40% in a very bad year, so a 20% tolerable fall allows about half.
+    by_nerve = max(0.0, min(0.85, max_fall / 0.40))
+    equity = round(min(by_time, by_nerve) * 20) / 20  # in steps of 5%
+    gold = 0.10 if equity >= 0.30 else 0.05
+    debt = round(1 - equity - gold, 2)
+    mean = equity * EQUITY[0] + debt * DEBT[0] + gold * GOLD[0]
+    swing = ((equity * EQUITY[1]) ** 2 + (debt * DEBT[1]) ** 2 + (gold * GOLD[1]) ** 2) ** 0.5
+    return {"equity": equity, "debt": debt, "gold": gold, "mean": mean, "swing": swing,
+            "crash": -equity * CRASH, "limited_by": "time" if by_time <= by_nerve else "nerve"}
+
+
+def asset_class(kind: str, name: str, category: str | None) -> str:
+    text = f"{name} {category or ''}".lower()
+    if kind == "stock":
+        return "gold" if "gold" in text else "equity"
+    if "gold" in text or "silver" in text:
+        return "gold"
+    if "hybrid" in text or "asset allocation" in text or "balanced" in text:
+        return "hybrid"
+    if any(w in text for w in ("debt", "income", "liquid", "money market", "gilt", "overnight", "bond")):
+        return "debt"
+    return "equity" if any(w in text for w in ("equity", "elss", "index", "etf", "cap", "growth")) else "other"
+
+
+def current_mix(conn, holdings: list[dict]) -> dict:
+    """Share of the portfolio in shares, debt and gold (hybrid funds counted half and half)."""
+    total = sum(h["value"] for h in holdings)
+    mix = {"equity": 0.0, "debt": 0.0, "gold": 0.0, "other": 0.0}
+    for h in holdings:
+        cat = None
+        if h["kind"] == "fund":
+            r = conn.execute("SELECT category FROM funds WHERE scheme_code=?", (h["code"],)).fetchone()
+            cat = r[0] if r else None
+        c = asset_class(h["kind"], h["name"], cat)
+        if c == "hybrid":
+            mix["equity"] += h["value"] / 2
+            mix["debt"] += h["value"] / 2
+        else:
+            mix[c] += h["value"]
+    return {k: v / total for k, v in mix.items()} if total else {}

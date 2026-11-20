@@ -52,3 +52,23 @@ def test_shortlist_endpoint_owner_only(market, monkeypatch):  # noqa: F811
     r = c.get("/api/shortlist", params={"min_score": 60, "min_traded_cr": 1}).json()
     assert {s["symbol"] for s in r["items"]} <= {f"WIN{k}" for k in range(5)} and r["items"]
     assert r["history"]["periods"] >= 1
+
+
+def test_history_pays_costs_and_tax_and_compounds(market):  # noqa: F811
+    from matrix import backtest
+    ledger.backfill(market, horizon=20)
+    h = screener.history(market, screener.Rules(min_score=60, min_traded_cr=1), horizon=20)
+    grown = 1e5
+    for r in sorted(h["rows"], key=lambda r: r["date"]):
+        assert r["after"] == backtest.after_costs(r["avg"], 0.20)
+        grown *= 1 + r["after"]
+    assert h["growth"] == grown and h["avg_after_costs"] < h["avg"] and h["tax"] == 0.20
+    assert backtest.tax_for(252) == 0.125
+
+
+def test_shortlist_rejects_odd_holding_periods(market, monkeypatch):  # noqa: F811
+    auth.set_user(market, "owner", "correct-horse-battery")
+    c = TestClient(api.create_app(market, "s"))
+    c.post("/api/login", json={"username": "owner", "password": "correct-horse-battery"})
+    assert c.get("/api/shortlist", params={"horizon": 30}).status_code == 400
+    assert c.get("/api/shortlist", params={"horizon": 63}).json()["history"]["horizon"] == 63

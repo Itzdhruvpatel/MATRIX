@@ -320,6 +320,19 @@ $("goal-list").addEventListener("click", async (e) => {
   if (b) { await api(`/api/goals/${b.dataset.goalDel}`, { method: "DELETE" }).catch((err) => toast(err.message)); loadGoals(); }
 });
 
+$("alloc-form").addEventListener("submit", async (e) => {
+  e.preventDefault(); const f = e.target.elements; $("alloc-msg").textContent = "";
+  try {
+    const a = await api(`/api/allocation?${new URLSearchParams({ years: f.years.value, max_fall: f.max_fall.value / 100 })}`);
+    const pc = (x) => `${Math.round(x * 100)}%`, c = a.current;
+    $("alloc-out").innerHTML = `<h3>A starting mix</h3>
+      <p><b>${pc(a.equity)} shares and equity funds, ${pc(a.debt)} debt funds or FDs, ${pc(a.gold)} gold.</b> ${a.limited_by === "time" ? "Time is the limit here: money needed soon should not ride on the share market." : "Your comfort with falls is the limit here: a mix you abandon in a crash does worse than a calmer one you keep."}</p>
+      <p>With long-run averages this mix might grow about ${pct1(a.mean)} a year. In a crash like 2008, when Indian shares fell more than half, it could fall about <b>${pct1(-a.crash)}</b> before recovering.</p>` +
+      (c.equity != null ? `<p>What you hold now: ${pc(c.equity)} shares, ${pc(c.debt)} debt, ${pc(c.gold)} gold${c.other ? `, ${pc(c.other)} other` : ""}.` +
+        (Math.abs(c.equity - a.equity) >= 0.1 ? ` That is ${c.equity > a.equity ? "more" : "less"} in shares than this mix, by about ${rupees(Math.abs(c.equity - a.equity) * a.value)}.` : " That is close to this mix.") + `</p>` : "<p>Add what you own in My portfolio to compare.</p>") +
+      `<p class="hint">Assumes about 11% a year for shares (swinging 18%), 7% for debt and 8% for gold (swinging 15%). FD and EPF money counts as debt even though Matrix cannot see it.</p>`;
+  } catch (err) { $("alloc-msg").textContent = err.message; }
+});
 $("bond-form").addEventListener("submit", async (e) => {
   e.preventDefault(); const f = e.target.elements; $("bond-msg").textContent = "";
   try {
@@ -334,16 +347,24 @@ $("bond-form").addEventListener("submit", async (e) => {
 });
 
 /* ---------------------------------------------------------------- shortlist */
+let slSeq = 0;
 async function loadShortlist() {
-  const f = $("sl-form"), params = new URLSearchParams({ min_score: f.min_score.value, min_traded_cr: f.min_traded_cr.value });
+  const seq = ++slSeq, f = $("sl-form"), params = new URLSearchParams({ min_score: f.min_score.value, min_traded_cr: f.min_traded_cr.value, horizon: f.horizon.value });
   for (const k of ["no_danger", "no_warning", "calm", "uptrend", "small_fall"]) params.set(k, f[k].checked);
+  $("sl-line").textContent = "Checking these rules on past years...";
   const r = await api(`/api/shortlist?${params}`);
+  if (seq !== slSeq) return;  // a newer request is on its way
   if (!r.date) { $("sl-line").textContent = "No ratings yet. They appear after the data loader runs."; $("sl-list").innerHTML = ""; return; }
   $("sl-title").textContent = `${whole.format(r.count)} stock${r.count === 1 ? "" : "s"} pass, ${shortDate(r.date)}`;
   const h = r.history;
+  const [hold, each] = { 20: ["a month", "a month"], 63: ["3 months", "every 3 months"], 252: ["a year", "a year"] }[h.horizon];
   $("sl-line").innerHTML = !h.periods ? "Not enough history yet to check how these rules did in the past." :
-    `Tried on the last ${h.periods} months (alerts left out, as Matrix only keeps today's): stocks passing these rules returned <b>${fracText(h.avg)}</b> a month on average, against <b>${fracText(h.market_avg)}</b> for simply owning the Nifty. They did better in ${h.won} of ${h.periods} months. ` +
-    (h.avg > h.market_avg ? "Past months do not promise the next one." : "<b>So far, just owning the Nifty did better.</b>");
+    `Tested on ${h.periods} past periods from ${shortDate(h.from)}, buying every stock that passed in equal amounts and selling after ${hold} (alerts left out, as Matrix only keeps today's). ` +
+    `They returned <b>${fracText(h.avg)}</b> ${each} on average, or <b>${fracText(h.avg_after_costs)}</b> after ${(h.cost * 100).toFixed(1)}% costs and ${(h.tax * 100).toFixed(1)}% tax. Simply holding the Nifty: <b>${fracText(h.market_avg)}</b>. ` +
+    `Rs 1 lakh following these rules would now be about <b>${rupees(h.growth)}</b> after costs and tax; in the Nifty, <b>${rupees(h.market_growth)}</b> (before tax). The rules did better in ${h.won} of ${h.periods} periods; the worst one ${h.worst < 0 ? `lost ${pct1(-h.worst)}` : `still made ${pct1(h.worst)}`}. ` +
+    (h.growth > h.market_growth ? "Past periods do not promise the next one." : "<b>So far, just holding the Nifty did better.</b>");
+  $("sl-table").innerHTML = h.periods ? `<tr><th style="text-align:left">Bought on</th><th>Stocks</th><th>Their return</th><th>After costs and tax</th><th>Nifty</th></tr>` +
+    h.rows.map((x) => `<tr><td>${shortDate(x.date)}</td><td>${x.stocks}</td><td class="${sign(x.avg)}">${fracText(x.avg)}</td><td class="${sign(x.after)}">${fracText(x.after)}</td><td class="${sign(x.market)}">${fracText(x.market)}</td></tr>`).join("") : "";
   $("sl-list").innerHTML = r.items.map((s) => `<li><button class="row-btn" data-symbol="${esc(s.symbol)}">${scoreBadge(s.score)}
     <span class="grow"><span class="sym">${esc(s.symbol)}</span><span class="nm">${esc(s.name)}</span><span class="why">${esc(s.why.slice(1).join(", "))}</span></span></button></li>`).join("") +
     (r.count > r.items.length ? `<li class="empty">Showing the top ${r.items.length}. Tighten the rules to see fewer.</li>` : "") || `<li class="empty">No stock passes all these rules today. Try loosening one.</li>`;

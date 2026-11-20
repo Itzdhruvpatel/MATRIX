@@ -576,9 +576,12 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
         return out
 
     @app.get("/api/shortlist")
-    def shortlist(rules: screener.Rules = Depends(), _: str = Depends(owner_only)):
+    def shortlist(rules: screener.Rules = Depends(), horizon: int = ledger.HORIZON,
+                  _: str = Depends(owner_only)):
+        if horizon not in forecast.HORIZONS:
+            raise HTTPException(400, "Hold for 20, 63 or 252 trading days")
         with lock:
-            return {**screener.shortlist(conn, rules), "history": screener.history(conn, rules)}
+            return {**screener.shortlist(conn, rules), "history": screener.history(conn, rules, horizon)}
 
     @app.get("/api/forecast/{symbol}")
     def stock_forecast(symbol: str, _: str = Depends(owner_only)):
@@ -661,6 +664,15 @@ def create_app(conn, secret: str, scheduler: bool = False) -> FastAPI:
                 g["projection"] = None
                 g["problem"] = str(e)
         return out
+
+    @app.get("/api/allocation")
+    def allocation(years: float, max_fall: float, name: str = Depends(user)):
+        if not (0 < years <= 60 and 0 <= max_fall <= 1):
+            raise HTTPException(400, "Years 1 to 60, and the fall you can sit through 0 to 100%")
+        with lock:
+            holdings = portfolio.summary(conn, name)["holdings"]
+            return {**goals.allocation(years, max_fall), "current": goals.current_mix(conn, holdings),
+                    "value": sum(h["value"] for h in holdings)}
 
     @app.post("/api/goals")
     def goal_add(g: Goal, name: str = Depends(user)):

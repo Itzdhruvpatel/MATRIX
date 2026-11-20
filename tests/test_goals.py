@@ -43,3 +43,28 @@ def test_goal_endpoints():
     [got] = c.get("/api/goals").json()
     assert got["name"] == "House" and 0 <= got["projection"]["chance"] <= 1
     assert c.delete(f"/api/goals/{got['id']}").status_code == 200 and c.get("/api/goals").json() == []
+
+
+def test_allocation_follows_time_and_nerve():
+    short = goals.allocation(2, 0.5)
+    assert short["equity"] == 0.2 and short["limited_by"] == "time"
+    nervous = goals.allocation(20, 0.10)
+    assert nervous["equity"] == 0.25 and nervous["limited_by"] == "nerve"
+    long = goals.allocation(20, 0.5)
+    assert long["equity"] == 0.75 and long["gold"] == 0.10 and long["debt"] == 0.15
+    assert long["crash"] < nervous["crash"] < 0 < nervous["mean"] and long["crash"] == -0.75 * 0.55
+    for a in (short, nervous, long):
+        assert abs(a["equity"] + a["debt"] + a["gold"] - 1) < 1e-9
+
+
+def test_asset_classes_and_current_mix():
+    assert goals.asset_class("fund", "SBI Gold Fund", "Other Scheme - FoF Domestic") == "gold"
+    assert goals.asset_class("fund", "HDFC Liquid Fund", "Debt Scheme - Liquid Fund") == "debt"
+    assert goals.asset_class("fund", "ICICI Balanced Advantage", "Hybrid Scheme - Dynamic") == "hybrid"
+    assert goals.asset_class("fund", "PPFAS Flexi", "Equity Scheme - Flexi Cap Fund") == "equity"
+    conn = db.connect(":memory:")
+    conn.execute("INSERT INTO funds (scheme_code, name, category, source, fetched_at) VALUES"
+                 " ('1', 'Balanced', 'Hybrid Scheme - Aggressive Hybrid Fund', 't', 't')")
+    mix = goals.current_mix(conn, [{"kind": "stock", "code": "TCS", "name": "TCS", "value": 50},
+                                   {"kind": "fund", "code": "1", "name": "Balanced", "value": 50}])
+    assert mix == {"equity": 0.75, "debt": 0.25, "gold": 0.0, "other": 0.0}
